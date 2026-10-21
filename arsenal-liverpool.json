@@ -1,0 +1,358 @@
+{
+    "matchId": "PL2027-001",
+    "competition": "Premier League",
+    "season": "2026-27",
+    "stadium": "Emirates Stadium",
+    "status": "Completed",
+    "currentMinute": 90,
+    "homeTeam": {
+        "teamId": "ARS",
+        "name": "Arsenal",
+        "coach": "Mikel Arteta",
+        "formation": "4-3-3",
+        "score": 2,
+        "startingXI": [
+            {
+                "playerId": "ARS01",
+                "name": "David Raya",
+                "number": 1,
+                "position": "GK",
+                "captain": false
+            },
+            {
+                "playerId": "ARS02",
+                "name": "Ben White",
+                "number": 4,
+                "position": "RB",
+                "captain": false
+            },
+            {
+                "playerId": "ARS03",
+                "name": "William Saliba",
+                "number": 2,
+                "position": "CB",
+                "captain": false
+            },
+            {
+                "playerId": "ARS04",
+                "name": "Gabriel Magalhaes",
+                "number": 6,
+                "position": "CB",
+                "captain": false
+            },
+            {
+                "playerId": "ARS05",
+                "name": "Riccardo Calafiori",
+                "number": 33,
+                "position": "LB",
+                "captain": false
+            },
+            {
+                "playerId": "ARS06",
+                "name": "Declan Rice",
+                "number": 41,
+                "position": "CM",
+                "captain": true
+            },
+            {
+                "playerId": "ARS07",
+                "name": "Martin Odegaard",
+                "number": 8,
+                "position": "CAM",
+                "captain": false
+            },
+            {
+                "playerId": "ARS08",
+                "name": "Mikel Merino",
+                "number": 23,
+                "position": "CM",
+                "captain": false
+            },
+            {
+                "playerId": "ARS09",
+                "name": "Bukayo Saka",
+                "number": 7,
+                "position": "RW",
+                "captain": false
+            },
+            {
+                "playerId": "ARS10",
+                "name": "Kai Havertz",
+                "number": 29,
+                "position": "ST",
+                "captain": false
+            },
+            {
+                "playerId": "ARS11",
+                "name": "Gabriel Martinelli",
+                "number": 11,
+                "position": "LW",
+                "captain": false
+            }
+        ],
+        "substitutes": [
+            {
+                "playerId": "ARS12",
+                "name": "Leandro Trossard",
+                "number": 19,
+                "position": "FW"
+            },
+            {
+                "playerId": "ARS13",
+                "name": "Jurrien Timber",
+                "number": 12,
+                "position": "DF"
+            },
+            {
+                "playerId": "ARS14",
+                "name": "Ethan Nwaneri",
+                "number": 53,
+                "position": "MF"
+            },
+            {
+                "playerId": "ARS15",
+                "name": "Oleksandr Zinchenko",
+                "number": 17,
+                "position": "DF"
+            },
+            {
+                "playerId": "ARS16",
+                "name": "Neto",
+                "number": 32,
+                "position": "GK"
+            }
+        ]
+    },
+    "awayTeam": {
+        "teamId": "LIV",
+        "name": "Liverpool",
+        "coach": "Arne Slot",
+        "formation": "4-2-3-1",
+        "score": 1,
+        "startingXI": [
+            {
+                "playerId": "LIV01",
+                "name": "Alisson Becker",
+                "number": 1,
+                "position": "GK",
+                "captain": false
+            },
+            {
+                "playerId": "LIV02",
+                "name": "Trent Alexander-Arnold",
+                "number": 66,
+                "position": "RB",
+                "captain": false
+            },
+            {
+                "playerId": "LIV03",
+                "name": "Ibrahima Konate",
+                "number": 5,
+                "position": "CB",
+                "captain": false
+            },
+            {
+                "playerId": "LIV04",
+                "name": "Virgil van Dijk",
+                "number": 4,
+                "position": "CB",
+                "captain": true
+            },
+            {
+                "playerId": "LIV05",
+                "name": "Andy Robertson",
+                "number": 26,
+                "position": "LB",
+                "captain": false
+            },
+            {
+                "playerId": "LIV06",
+                "name": "Alexis Mac Allister",
+                "number": 10,
+                "position": "CM",
+                "captain": false
+            },
+            {
+                "playerId": "LIV07",
+                "name": "Ryan Gravenberch",
+                "number": 38,
+                "position": "CM",
+                "captain": false
+            },
+            {
+                "playerId": "LIV08",
+                "name": "Dominik Szoboszlai",
+                "number": 8,
+                "position": "CAM",
+                "captain": false
+            },
+            {
+                "playerId": "LIV09",
+                "name": "Mohamed Salah",
+                "number": 11,
+                "position": "RW",
+                "captain": false
+            },
+            {
+                "playerId": "LIV10",
+                "name": "Darwin Nunez",
+                "number": 9,
+                "position": "ST",
+                "captain": false
+            },
+            {
+                "playerId": "LIV11",
+                "name": "Luis Diaz",
+                "number": 7,
+                "position": "LW",
+                "captain": false
+            }
+        ],
+        "substitutes": [
+            {
+                "playerId": "LIV12",
+                "name": "Diogo Jota",
+                "number": 20,
+                "position": "FW"
+            },
+            {
+                "playerId": "LIV13",
+                "name": "Curtis Jones",
+                "number": 17,
+                "position": "MF"
+            },
+            {
+                "playerId": "LIV14",
+                "name": "Cody Gakpo",
+                "number": 18,
+                "position": "FW"
+            },
+            {
+                "playerId": "LIV15",
+                "name": "Joe Gomez",
+                "number": 2,
+                "position": "DF"
+            },
+            {
+                "playerId": "LIV16",
+                "name": "Caoimhin Kelleher",
+                "number": 62,
+                "position": "GK"
+            }
+        ]
+    },
+    "statistics": {
+        "possession": {
+            "home": 58,
+            "away": 42
+        },
+        "shots": {
+            "home": 16,
+            "away": 10
+        },
+        "shotsOnTarget": {
+            "home": 8,
+            "away": 4
+        },
+        "passAccuracy": {
+            "home": 89,
+            "away": 84
+        },
+        "corners": {
+            "home": 7,
+            "away": 4
+        },
+        "fouls": {
+            "home": 10,
+            "away": 12
+        }
+    },
+    "timeline": [
+        {
+            "eventId": "EV001",
+            "minute": 12,
+            "eventType": "Shot",
+            "team": "ARS",
+            "player": "Kai Havertz",
+            "onTarget": true
+        },
+        {
+            "eventId": "EV002",
+            "minute": 24,
+            "eventType": "PressureSequence",
+            "team": "ARS",
+            "durationSeconds": 96,
+            "importanceScore": 75
+        },
+        {
+            "eventId": "EV003",
+            "minute": 31,
+            "eventType": "Goal",
+            "team": "ARS",
+            "player": "Bukayo Saka",
+            "assist": "Martin Odegaard",
+            "importanceScore": 100
+        },
+        {
+            "eventId": "EV004",
+            "minute": 43,
+            "eventType": "YellowCard",
+            "team": "LIV",
+            "player": "Alexis Mac Allister"
+        },
+        {
+            "eventId": "EV005",
+            "minute": 54,
+            "eventType": "Goal",
+            "team": "LIV",
+            "player": "Mohamed Salah",
+            "assist": "Dominik Szoboszlai",
+            "importanceScore": 95
+        },
+        {
+            "eventId": "EV006",
+            "minute": 66,
+            "eventType": "Substitution",
+            "team": "ARS",
+            "playerOut": "Gabriel Martinelli",
+            "playerIn": "Leandro Trossard"
+        },
+        {
+            "eventId": "EV007",
+            "minute": 72,
+            "eventType": "PressureSequence",
+            "team": "ARS",
+            "durationSeconds": 114,
+            "importanceScore": 88
+        },
+        {
+            "eventId": "EV008",
+            "minute": 79,
+            "eventType": "Goal",
+            "team": "ARS",
+            "player": "Kai Havertz",
+            "assist": "Bukayo Saka",
+            "importanceScore": 100
+        }
+    ],
+    "generatedInsights": [
+        {
+            "minute": 31,
+            "type": "GoalImpact",
+            "summary": "Arsenal's opening goal rewarded a sustained spell of pressure.",
+            "reason": "The home side had controlled possession for most of the first half."
+        },
+        {
+            "minute": 54,
+            "type": "MomentumShift",
+            "summary": "Liverpool equalized against the run of play.",
+            "reason": "The goal temporarily shifted momentum and increased match intensity."
+        },
+        {
+            "minute": 79,
+            "type": "WinningMoment",
+            "summary": "Havertz restored Arsenal's lead.",
+            "reason": "The move began with a high press and ended with a quick attacking transition."
+        }
+    ]
+}
