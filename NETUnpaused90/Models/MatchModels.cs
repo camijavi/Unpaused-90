@@ -6,9 +6,12 @@ public record MatchData(
     string Season,
     string Stadium,
     string Status,
-    int CurrentTime,
-    Team HomeTam,
-    Team AwayTeam
+    int CurrentMinute,
+    Team HomeTeam,
+    Team AwayTeam,
+    MatchStats Statistics,
+    List<TimelineEvent> Timeline,
+    List<GeneratedInsight> GeneratedInsights
 );
 
 public record Team(
@@ -18,7 +21,7 @@ public record Team(
     string Formation,
     int Score,
     List<Player> StartingXI,
-    List <SubstitutePlayer> Substitutes
+    List<SubstitutePlayer> Substitutes
 );
 
 public record Player(
@@ -37,10 +40,10 @@ public record SubstitutePlayer(
 );
 
 public record MatchStats(
-    StatPair Possesion,
+    StatPair Possession,
     StatPair Shots,
     StatPair ShotsOnTarget,
-    StatPair PassAcuracy,
+    StatPair PassAccuracy,
     StatPair Corners,
     StatPair Fouls
 );
@@ -50,19 +53,21 @@ public record StatPair(
     int Away
 );
 
-public record TimeLineEvenet(
+public record TimelineEvent(
     string EventId,
     int Minute,
     string EventType,
     string Team,
-    string? Player,
-    string? Assist,
-    bool? OnTarget,
-    int? DurationSeconds,
-    int? ImportanceScore
+    string? Player = null,
+    string? Assist = null,
+    bool? OnTarget = null,
+    int? DurationSeconds = null,
+    int? ImportanceScore = null,
+    string? PlayerIn = null,
+    string? PlayerOut = null
 );
 
-public record GeneratedInSight(
+public record GeneratedInsight(
     int Minute,
     string Type,
     string Summary,
@@ -79,7 +84,7 @@ public record CatchUpRequest (
 );
 
 public record CatchUpResponse (
-    string WhatHappend,
+    string WhatHappened,
     string WhyItMatters,
     string MomentumChanges,
     string WhatToWatchNext
