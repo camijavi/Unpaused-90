@@ -1,6 +1,21 @@
 @NETUnpaused90_HostAddress = http://localhost:5165
 
-GET {{NETUnpaused90_HostAddress}}/weatherforecast/
+### 1. Get All Matches
+GET {{NETUnpaused90_HostAddress}}/api/v1/matches
 Accept: application/json
 
-###
+### 2. Get Match Details (Arsenal vs Liverpool)
+GET {{NETUnpaused90_HostAddress}}/api/v1/matches/PL2027-001
+Accept: application/json
+
+### 3. Get Match Timeline (Full Match)
+GET {{NETUnpaused90_HostAddress}}/api/v1/matches/PL2027-001/timeline
+Accept: application/json
+
+### 4. Get Match Timeline up to Minute 60 (Simulating Dad joining at 60')
+GET {{NETUnpaused90_HostAddress}}/api/v1/matches/PL2027-001/timeline?upToMinute=60
+Accept: application/json
+
+### 5. Get Match Insights / Key Moments
+GET {{NETUnpaused90_HostAddress}}/api/v1/matches/PL2027-001/insights
+Accept: application/json

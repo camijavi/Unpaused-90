@@ -75,6 +75,19 @@ public record GeneratedInsight(
 );
 
 // DTOs for the API
+public record MatchSummaryDto(
+    string MatchId,
+    string Competition,
+    string Stadium,
+    string HomeTeam,
+    string AwayTeam,
+    int HomeScore,
+    int AwayScore,
+    string Score,
+    int CurrentMinute,
+    string Status
+);
+
 public record CatchUpRequest (
     string MatchId,
     int LastViewedMinute,
@@ -89,4 +102,3 @@ public record CatchUpResponse (
     string MomentumChanges,
     string WhatToWatchNext
 );
-
