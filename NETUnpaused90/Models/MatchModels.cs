@@ -94,29 +94,40 @@ public record CatchUpRequest(
     int CurrentMinute,
     string ViewMode = "casual",
     string? FavoriteTeam = null,
-    string? Language = "en"
+    string? Language = "en",
+    string Length = "1m",
+    bool IncludeAudio = false
 );
 
 public record CatchUpResponse(
     string WhatHappened,
     string WhyItMatters,
     string MomentumChanges,
-    string WhatToWatchNext
+    string WhatToWatchNext,
+    string? Length = "1m",
+    int? WordCount = null,
+    int? EstimatedDurationSeconds = null,
+    string? AudioUrl = null
 );
 
 public record PersonalizedSummaryRequest(
     string MatchId,
     string Mode = "casual",
     string? FavoriteTeam = null,
-    string? Length = "1m",
-    string? Language = "en"
+    string Length = "1m",
+    string? Language = "en",
+    bool IncludeAudio = false
 );
 
 public record PersonalizedSummaryResponse(
     string MatchId,
     string Mode,
     string? FavoriteTeam,
-    string Story
+    string Story,
+    string Length = "1m",
+    int WordCount = 0,
+    int EstimatedDurationSeconds = 0,
+    string? AudioUrl = null
 );
 
 public record ExplainEventRequest(

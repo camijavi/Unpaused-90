@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Security;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Azure.Core;
 using NETUnpaused90.Models;
 
@@ -59,12 +60,15 @@ public class SpeechService
                         string.Equals(request.Language?.Trim(), "es-MX", StringComparison.OrdinalIgnoreCase);
 
         var xmlLang = isSpanish ? "es-MX" : "en-US";
-        var escapedText = SecurityElement.Escape(request.Text);
+        var expressiveSsmlBody = BuildExpressiveSsmlBody(request.Text);
 
+        // Use a natural, unhurried broadcast pace (-4% rate) with genuine SSML <break> pauses for emotion
         var ssml =
             $"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{xmlLang}'>" +
             $"<voice name='{voiceName}'>" +
-            $"<lang xml:lang='{xmlLang}'>{escapedText}</lang>" +
+            $"<lang xml:lang='{xmlLang}'>" +
+            $"<prosody rate='-4%'>{expressiveSsmlBody}</prosody>" +
+            $"</lang>" +
             $"</voice>" +
             $"</speak>";
 
@@ -112,6 +116,33 @@ public class SpeechService
         return (audioBytes, voiceName, isSpanish ? "es" : "en");
     }
 
+    /// <summary>
+    /// Escapes raw text for XML and converts dramatic punctuation (..., —, !, paragraph breaks)
+    /// into SSML &lt;break&gt; tags so the narration breathes and conveys real emotion.
+    /// </summary>
+    private static string BuildExpressiveSsmlBody(string rawText)
+    {
+        var escaped = SecurityElement.Escape(rawText) ?? string.Empty;
+
+        // Paragraph / section breaks -> 750ms pause
+        escaped = Regex.Replace(escaped, @"(\r?\n){2,}", " <break time='750ms'/> ");
+        escaped = Regex.Replace(escaped, @"\r?\n", " <break time='450ms'/> ");
+
+        // Ellipses (...) -> 600ms emotional pause (e.g. sighs, disbelief, building tension)
+        escaped = Regex.Replace(escaped, @"\.{3,}", " <break time='600ms'/> ");
+
+        // Em-dashes (— or --) -> 400ms dramatic beat
+        escaped = escaped.Replace("—", " <break time='400ms'/> ")
+                         .Replace(" -- ", " <break time='400ms'/> ")
+                         .Replace(" - ", " <break time='300ms'/> ");
+
+        // Sentence-ending exclamation or period -> natural breath pause
+        escaped = Regex.Replace(escaped, @"!\s+", "! <break time='350ms'/> ");
+        escaped = Regex.Replace(escaped, @"\?\s+", "? <break time='350ms'/> ");
+
+        return escaped;
+    }
+
     private static string NormalizeVoiceName(string? requestedVoice, string defaultVoice)
     {
         if (string.IsNullOrWhiteSpace(requestedVoice))
@@ -153,7 +184,6 @@ public class SpeechService
             new TokenRequestContext(["https://management.azure.com/.default"]),
             cancellationToken);
 
-        // Step 1: Get active subscription(s)
         using var subReq = new HttpRequestMessage(
             HttpMethod.Get,
             "https://management.azure.com/subscriptions?api-version=2022-12-01");
