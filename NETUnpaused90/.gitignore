@@ -12,6 +12,18 @@ bld/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
+*.binlog
+
+# .NET artifacts output (new in .NET 8+)
+artifacts/
+
+# Publish output
+[Pp]ublish/
+
+# Visual Studio / IDE files & cache
+.vs/
+.vscode/
+.idea/
 
 # User-specific files
 *.rsuser
@@ -19,10 +31,21 @@ bld/
 *.user
 *.userosscache
 *.sln.docstates
+*.userprefs
+*.DotSettings.user
 
-# Visual Studio Code / IDE
-.vscode/
-.idea/
+# Test results
+[Tt]est[Rr]esult*/
+TestResults/
+[Bb]uild[Ll]og.*
 
-# Dotnet user secrets
+# Dotnet user secrets & local configuration
 .microsoft/usersecrets/
+appsettings*.local.json
+*.local.json
+
+# Crash dumps & temporary files
+*.dmp
+*.crash
+*.tmp
+

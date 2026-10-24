@@ -26,12 +26,28 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
-
-app.UseHttpsRedirection();
+else
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseCors();
 
 app.UseAuthorization();
+
+// Friendly root route so clicking http://localhost:5165 in the terminal works immediately
+app.MapGet("/", () => Results.Ok(new
+{
+    service = "Unpaused 90' API",
+    status = "Running",
+    endpoints = new[]
+    {
+        "/api/v1/matches",
+        "/api/v1/matches/PL2027-001",
+        "/api/v1/matches/PL2027-001/timeline",
+        "/api/v1/matches/PL2027-001/insights"
+    }
+}));
 
 app.MapMatchEndpoints();
 app.MapControllers();

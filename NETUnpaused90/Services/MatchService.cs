@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Azure.Core;
 using Azure.Identity;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
@@ -11,6 +12,7 @@ public class MatchService
     private readonly IConfiguration _configuration;
     private readonly ILogger<MatchService> _logger;
     private readonly IWebHostEnvironment _env;
+    private readonly TokenCredential _credential;
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
@@ -26,11 +28,20 @@ public class MatchService
         _configuration = configuration;
         _logger = logger;
         _env = env;
+
+        var tenantId = _configuration["AzureBlob:TenantId"];
+
+        // Locally: authenticate directly against your Azure tenant so personal @gmail.com Microsoft accounts work.
+        // In Azure App Service (Production): use Managed Identity via DefaultAzureCredential.
+        _credential = _env.IsDevelopment()
+            ? new ChainedTokenCredential(
+                new AzureCliCredential(new AzureCliCredentialOptions { TenantId = tenantId }),
+                new InteractiveBrowserCredential(new InteractiveBrowserCredentialOptions { TenantId = tenantId }))
+            : new DefaultAzureCredential();
     }
 
     /// <summary>
-    /// Fetches the match data from Azure Blob Storage using Microsoft Entra ID (DefaultAzureCredential).
-    /// Falls back to the local arsenal-liverpool.json file if Azure Blob Storage is unreachable locally.
+    /// Fetches the match data directly from Azure Blob Storage using Microsoft Entra ID.
     /// </summary>
     public async Task<MatchData?> GetMatchAsync(string matchId, CancellationToken cancellationToken = default)
     {
@@ -40,7 +51,7 @@ public class MatchService
             return _cachedMatch;
         }
 
-        var matchData = await LoadMatchDataAsync(cancellationToken);
+        var matchData = await LoadMatchDataFromBlobAsync(cancellationToken);
         if (matchData is not null)
         {
             _cachedMatch = matchData;
@@ -57,7 +68,7 @@ public class MatchService
 
     public async Task<List<MatchSummaryDto>> GetAllMatchesAsync(CancellationToken cancellationToken = default)
     {
-        var match = _cachedMatch ?? await LoadMatchDataAsync(cancellationToken);
+        var match = _cachedMatch ?? await LoadMatchDataFromBlobAsync(cancellationToken);
         if (match is null)
         {
             return [];
@@ -122,75 +133,31 @@ public class MatchService
         return insights.OrderBy(i => i.Minute).ToList();
     }
 
-    private async Task<MatchData?> LoadMatchDataAsync(CancellationToken cancellationToken)
+    private async Task<MatchData?> LoadMatchDataFromBlobAsync(CancellationToken cancellationToken)
     {
-        var blobEndpointOrConnString = _configuration["AzureBlob:ConnectionString"];
-        var containerName = _configuration["AzureBlob:ContainerName"] ?? "match";
+        var blobEndpoint = _configuration["AzureBlob:ConnectionString"]
+            ?? throw new InvalidOperationException("AzureBlob:ConnectionString is missing in appsettings.json.");
+        var containerName = _configuration["AzureBlob:ContainerName"] ?? "matches";
         var blobName = _configuration["AzureBlob:BlobName"] ?? "arsenal-liverpool.json";
 
-        if (!string.IsNullOrWhiteSpace(blobEndpointOrConnString) &&
-            !blobEndpointOrConnString.StartsWith("<"))
-        {
-            try
-            {
-                BlobServiceClient blobServiceClient;
+        var serviceUri = new Uri(blobEndpoint);
 
-                // Authenticate with Microsoft Entra ID (DefaultAzureCredential) when given an HTTPS endpoint URL
-                if (Uri.TryCreate(blobEndpointOrConnString, UriKind.Absolute, out var serviceUri) &&
-                    (serviceUri.Scheme == Uri.UriSchemeHttps || serviceUri.Scheme == Uri.UriSchemeHttp))
-                {
-                    _logger.LogInformation(
-                        "Connecting to Azure Blob Storage ({ServiceUri}) via Microsoft Entra ID (DefaultAzureCredential)...",
-                        serviceUri);
+        _logger.LogInformation(
+            "Connecting to Azure Blob Storage ({ServiceUri}) via Microsoft Entra ID...",
+            serviceUri);
 
-                    blobServiceClient = new BlobServiceClient(serviceUri, new DefaultAzureCredential());
-                }
-                else
-                {
-                    blobServiceClient = new BlobServiceClient(blobEndpointOrConnString);
-                }
+        var blobServiceClient = new BlobServiceClient(serviceUri, _credential);
+        var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
+        var blobClient = containerClient.GetBlobClient(blobName);
 
-                var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
-                var blobClient = containerClient.GetBlobClient(blobName);
+        BlobDownloadResult downloadResult = await blobClient.DownloadContentAsync(cancellationToken);
+        var json = downloadResult.Content.ToString();
 
-                BlobDownloadResult downloadResult = await blobClient.DownloadContentAsync(cancellationToken);
-                var json = downloadResult.Content.ToString();
+        _logger.LogInformation(
+            "Successfully downloaded '{BlobName}' from Azure Blob container '{ContainerName}'.",
+            blobName,
+            containerName);
 
-                _logger.LogInformation(
-                    "Successfully loaded '{BlobName}' from Azure Blob container '{ContainerName}'.",
-                    blobName,
-                    containerName);
-
-                return JsonSerializer.Deserialize<MatchData>(json, _jsonOptions);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(
-                    ex,
-                    "Azure Blob Storage access failed ({Message}). Falling back to local file '{BlobName}'.",
-                    ex.Message,
-                    blobName);
-            }
-        }
-
-        // Fallback to local arsenal-liverpool.json in repository root or content root
-        var candidatePaths = new[]
-        {
-            Path.Combine(_env.ContentRootPath, blobName),
-            Path.Combine(_env.ContentRootPath, "..", blobName)
-        };
-
-        foreach (var path in candidatePaths)
-        {
-            if (File.Exists(path))
-            {
-                _logger.LogInformation("Loading match data from local file: {FilePath}", Path.GetFullPath(path));
-                var localJson = await File.ReadAllTextAsync(path, cancellationToken);
-                return JsonSerializer.Deserialize<MatchData>(localJson, _jsonOptions);
-            }
-        }
-
-        _logger.LogError("Could not find match data in Azure Blob Storage or local path.");
-        return null;
+        return JsonSerializer.Deserialize<MatchData>(json, _jsonOptions);
     }
 }
