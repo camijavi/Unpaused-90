@@ -73,9 +73,14 @@ public class AiService
              e.Team.Equals(match.AwayTeam.Name, StringComparison.OrdinalIgnoreCase)));
 
         var (systemPersona, modeGuidelines, temperature) = GetAudiencePersonaProfile(request.ViewMode);
+        var (biasSystemAddendum, biasGuidelines) = GetClubBiasProfile(
+            request.FavoriteTeam,
+            match.HomeTeam.Name,
+            match.AwayTeam.Name,
+            request.ViewMode);
 
         var languageInstruction = string.Equals(request.Language, "es", StringComparison.OrdinalIgnoreCase)
-            ? "Write all JSON field values in Spanish, strictly preserving the required persona tone and vocabulary style."
+            ? "Write all JSON field values in Spanish, strictly preserving both the Audience Persona and the Club Bias mechanisms."
             : "Write all JSON field values in English.";
 
         var prompt = $@"
@@ -83,8 +88,7 @@ A viewer stopped watching the match at minute {request.LastViewedMinute}' and re
 
 {modeGuidelines}
 
-FAVORITE CLUB BIAS: {request.FavoriteTeam ?? "Neutral"}
-- Frame the perspective for a {request.FavoriteTeam ?? "Neutral"} viewer while strictly obeying the Audience Persona's tone, vocabulary, and inclusion/exclusion rules above.
+{biasGuidelines}
 
 LANGUAGE: {languageInstruction}
 
@@ -95,11 +99,11 @@ MATCH CONTEXT & DATA SLICE ({request.LastViewedMinute}' to {request.CurrentMinut
 - Events Between Minute {request.LastViewedMinute}' and {request.CurrentMinute}': {JsonSerializer.Serialize(filteredEvents)}
 - Tactical Insights in Window: {JsonSerializer.Serialize(filteredInsights)}
 
-TASK — Write every single field strictly in the voice, vocabulary, and style of the active Audience Persona (match the Reference Example's style!):
-1. whatHappened: Describe what happened between minute {request.LastViewedMinute}' and {request.CurrentMinute}'.
-2. whyItMatters: Explain WHY those events happened and why they matter (using the exact analytical depth, storyline framing, or kid-friendly metaphors required by the persona).
-3. momentumChanges: Describe the shift in control/tempo during this window in the persona's voice.
-4. whatToWatchNext: What the viewer should watch for after minute {request.CurrentMinute}' in the persona's voice.
+TASK — Write every single field strictly combining the ACTIVE AUDIENCE PERSONA and the ACTIVE CLUB BIAS MECHANISMS:
+1. whatHappened: Describe what happened between minute {request.LastViewedMinute}' and {request.CurrentMinute}' (applying Asymmetry in Agency, Euphemisms vs. Clinical Assessment, and Pacing/Emotional Cadence if biased; or strict 50/50 balance if neutral).
+2. whyItMatters: Explain WHY those events happened and why they matter (framing opponent goals as self-inflicted mistakes/robbery and our goals as active brilliance if biased).
+3. momentumChanges: Describe the shift in control/tempo during this window (rallying cries/grieving vs. impartial cadence).
+4. whatToWatchNext: What to watch for after minute {request.CurrentMinute}' (how 'we' get back into it / finish them off if biased, or balanced tactical outlook if neutral).
 
 OUTPUT FORMAT:
 Return ONLY a valid JSON object with these exact 4 keys:
@@ -119,7 +123,7 @@ Return ONLY a valid JSON object with these exact 4 keys:
 
         ChatCompletion completion = await chatClient.CompleteChatAsync(
             [
-                new SystemChatMessage(systemPersona),
+                new SystemChatMessage($"{systemPersona} {biasSystemAddendum}"),
                 new UserChatMessage(prompt)
             ],
             options,
@@ -140,6 +144,11 @@ Return ONLY a valid JSON object with these exact 4 keys:
         }
 
         var (systemPersona, modeGuidelines, temperature) = GetAudiencePersonaProfile(request.Mode);
+        var (biasSystemAddendum, biasGuidelines) = GetClubBiasProfile(
+            request.FavoriteTeam,
+            match.HomeTeam.Name,
+            match.AwayTeam.Name,
+            request.Mode);
 
         var lengthInstruction = request.Length?.ToLowerInvariant() switch
         {
@@ -149,7 +158,7 @@ Return ONLY a valid JSON object with these exact 4 keys:
         };
 
         var languageInstruction = string.Equals(request.Language, "es", StringComparison.OrdinalIgnoreCase)
-            ? "Write the story in Spanish, strictly preserving the persona's tone and vocabulary."
+            ? "Write the story in Spanish, strictly preserving both the Audience Persona and the Club Bias mechanisms."
             : "Write the story in English.";
 
         var prompt = $@"
@@ -157,7 +166,8 @@ Generate a personalized match recap for {match.HomeTeam.Name} ({match.HomeTeam.S
 
 {modeGuidelines}
 
-FAVORITE TEAM PERSPECTIVE: {request.FavoriteTeam ?? "Neutral"}
+{biasGuidelines}
+
 LENGTH: {lengthInstruction}
 LANGUAGE: {languageInstruction}
 
@@ -181,7 +191,7 @@ Return ONLY a valid JSON object with the exact key:
 
         ChatCompletion completion = await chatClient.CompleteChatAsync(
             [
-                new SystemChatMessage(systemPersona),
+                new SystemChatMessage($"{systemPersona} {biasSystemAddendum}"),
                 new UserChatMessage(prompt)
             ],
             options,
@@ -224,15 +234,22 @@ Return ONLY a valid JSON object with the exact key:
             .ToList();
 
         var (systemPersona, modeGuidelines, temperature) = GetAudiencePersonaProfile(request.ViewMode);
+        var (biasSystemAddendum, biasGuidelines) = GetClubBiasProfile(
+            request.FavoriteTeam,
+            match.HomeTeam.Name,
+            match.AwayTeam.Name,
+            request.ViewMode);
 
         var languageInstruction = string.Equals(request.Language, "es", StringComparison.OrdinalIgnoreCase)
-            ? "Write title and explanation in Spanish, strictly preserving the persona's tone and vocabulary."
+            ? "Write title and explanation in Spanish, strictly preserving both the Audience Persona and the Club Bias mechanisms."
             : "Write title and explanation in English.";
 
         var prompt = $@"
 Explain WHY this specific football event happened and why it matters in {match.HomeTeam.Name} ({match.HomeTeam.Formation}) vs {match.AwayTeam.Name} ({match.AwayTeam.Formation}).
 
 {modeGuidelines}
+
+{biasGuidelines}
 
 LANGUAGE: {languageInstruction}
 
@@ -247,8 +264,8 @@ OVERALL STATS:
 
 Return ONLY a valid JSON object with the exact keys:
 {{
-  ""title"": ""Short headline in the persona's voice"",
-  ""explanation"": ""3-4 sentences explaining the event strictly in the persona's voice, matching the Reference Example style.""
+  ""title"": ""Short headline in the persona's voice and club bias"",
+  ""explanation"": ""3-4 sentences explaining the event strictly in the persona's voice and club bias.""
 }}";
 
         var chatClient = GetChatClient();
@@ -260,7 +277,7 @@ Return ONLY a valid JSON object with the exact keys:
 
         ChatCompletion completion = await chatClient.CompleteChatAsync(
             [
-                new SystemChatMessage(systemPersona),
+                new SystemChatMessage($"{systemPersona} {biasSystemAddendum}"),
                 new UserChatMessage(prompt)
             ],
             options,
@@ -287,25 +304,25 @@ Return ONLY a valid JSON object with the exact keys:
             "analyst" or "coach" => (
                 SystemPersona:
                     "You are an elite UEFA Pro License tactical analyst and data scientist. " +
-                    "Your tone is technical, objective, clinical, and completely detached. " +
-                    "You never use emotional rhetoric, clichés, or casual storytelling. " +
-                    "You write exclusively in precise football analytics terminology (in-possession/out-of-possession structures, Zone 14, half-spaces, xG, field tilt, PPDA, pressing triggers, rest-defense). " +
+                    "Your tone is technical, objective, clinical, and focused on tactical causality, space management, and execution efficiency. " +
+                    "You write in precise football analytics terminology (in-possession/out-of-possession structures, Zone 14, half-spaces, xG, field tilt, PPDA, pressing triggers, rest-defense). " +
                     "You output strict JSON.",
                 ModeGuidelines: """
                 === ACTIVE AUDIENCE PERSONA: THE ANALYST / COACH ===
-                * Tone: Technical, objective, clinical, and detached. Free of emotional rhetoric, moral evaluations, or dramatic framing; focused entirely on tactical causality, space management, and execution efficiency.
+                * Tone: Technical, clinical, and analytical. Focused on tactical causality, space management, and execution efficiency.
                 * Creativity Level: Very low (1/5). Use precise domain vocabulary and analytical structure over figurative language.
                 * MUST INCLUDE:
                   - In-possession and out-of-possession structural formations (e.g., 1-3-2-4-1 build-up vs. 1-4-4-2 mid-low block, 4-3-3 vs 4-2-3-1 shifts).
                   - Advanced underlying metrics & estimates derived from the match stats: xG, xGA, passing network density, field tilt %, pass accuracy %, and PPDA (passes per defensive action).
                   - Micro-tactical mechanisms: pressing triggers, center-back pin-downs, Zone 14 occupation, half-space overloads, dynamic numerical/positional superiorities, and rest-defense structures during transitions.
                 * STRICTLY FORBIDDEN (DO NOT INCLUDE):
-                  - Subjective clichés ("they lacked heart", "caught sleeping", "blistering", "electric").
+                  - Subjective clichés ("they lacked heart", "they were lazy").
+                  - Locker-room gossip, player personal lives, or transfer market value discussions.
                   - Play-by-play narrative commentary that does not explain tactical system mechanics.
                 * REFERENCE STYLE EXAMPLE (Match this exact clinical tone and technical density!):
                   "In the 31st minute, Arsenal broke Liverpool's 1-4-2-3-1 mid-block through an asymmetry created on the right flank. The inverted winger pinned the left center-back, opening an interior passing lane into Zone 14. Odegaard received on the half-turn, drawing the double pivot out of position, and slipped a through ball into the right half-space for Saka. Following a 96-second sustained pressure sequence (71% field tilt, PPDA of 6.4), the cutback generated an estimated xG of 0.64, converted on the first touch."
                 """,
-                Temperature: 0.2f
+                Temperature: 0.25f
             ),
 
             "kid" or "child" or "young" => (
@@ -336,7 +353,7 @@ Return ONLY a valid JSON object with the exact keys:
 
             _ => (
                 SystemPersona:
-                    "You are an engaging, charismatic Premier League broadcast host speaking to a Casual Fan. " +
+                    "You are an engaging, charismatic Premier League broadcast commentator speaking to a Casual Fan. " +
                     "Your tone is conversational, dynamic, and immediately accessible. " +
                     "You blend entertainment with clear storyline context without any dense coaching jargon or raw stat dumps. " +
                     "You output strict JSON.",
@@ -356,9 +373,86 @@ Return ONLY a valid JSON object with the exact keys:
                 * REFERENCE STYLE EXAMPLE (Match this exact conversational broadcast tone!):
                   "Right around the half-hour mark, Arsenal finally broke the deadlock. After pinning Liverpool back for twenty minutes, Odegaard caught the defense flat-footed with a slick through-ball to Bukayo Saka, who buried it to make it 1-0. Just when it looked like Arsenal were cruising in the second half, Mohamed Salah silenced the stadium in the 54th minute with a clinical equalizer against the run of play—completely flipping the momentum in this massive title-race clash."
                 """,
-                Temperature: 0.6f
+                Temperature: 0.65f
             )
         };
+    }
+
+    private static (string BiasSystemAddendum, string BiasGuidelines) GetClubBiasProfile(
+        string? favoriteTeam,
+        string homeTeam,
+        string awayTeam,
+        string? viewMode)
+    {
+        var normalizedFav = favoriteTeam?.Trim() ?? string.Empty;
+
+        var isHomeFav =
+            normalizedFav.Equals(homeTeam, StringComparison.OrdinalIgnoreCase) ||
+            normalizedFav.Equals("ARS", StringComparison.OrdinalIgnoreCase);
+
+        var isAwayFav =
+            normalizedFav.Equals(awayTeam, StringComparison.OrdinalIgnoreCase) ||
+            normalizedFav.Equals("LIV", StringComparison.OrdinalIgnoreCase);
+
+        if (!isHomeFav && !isAwayFav)
+        {
+            return (
+                BiasSystemAddendum:
+                    "You are strictly NEUTRAL and impartial. You NEVER take sides or use 'we'/'us'. " +
+                    "You distribute agency, credit, and clinical assessment 50/50 between both clubs.",
+                BiasGuidelines: $"""
+                === NARRATIVE PERSPECTIVE: STRICTLY NEUTRAL (50/50 IMPARTIAL) ===
+                1. Equal Agency: Distribute cause and effect equally between {homeTeam} and {awayTeam}. When a goal or turnover happens, highlight the attacking team's execution just as much as the defending team's structure. NEVER use "we", "us", or "our".
+                2. Clinical Assessment of Fouls/Cards: Use precise, factual, impartial language for physical events (e.g., "Late challenge by Mac Allister, caught the ankle; automatic yellow card").
+                3. Balanced Pacing: Maintain a consistent, objective broadcast cadence for both sides' goals and pressure spells.
+                * NEUTRAL REFERENCE EXAMPLE:
+                  "Rashford drives toward the byline—tangled up with Romero, goes down, but the referee waves play away instantly! No whistle. Spurs break in numbers now through Son. Three on two, Son slides it across to Maddison, one touch to set himself—dinks it over the advancing keeper! Tottenham take the lead in the 88th minute! A ruthless, devastating counterattack seconds after Manchester United's penalty appeals were dismissed."
+                """
+            );
+        }
+
+        var favoredClub = isHomeFav ? homeTeam : awayTeam;
+        var opponentClub = isHomeFav ? awayTeam : homeTeam;
+        var isAnalyst = string.Equals(viewMode?.Trim(), "analyst", StringComparison.OrdinalIgnoreCase);
+
+        if (isAnalyst)
+        {
+            return (
+                BiasSystemAddendum:
+                    $"You are the in-house Head of Tactical Analysis on {favoredClub}'s coaching staff. " +
+                    $"You refer to {favoredClub} as 'we' / 'our structure' / 'our unit', and you evaluate the entire match through the lens of {favoredClub}'s tactical execution and how we exploit or contain {opponentClub}.",
+                BiasGuidelines: $"""
+                === NARRATIVE PERSPECTIVE: {favoredClub.ToUpperInvariant()} IN-HOUSE TACTICAL STAFF BIAS ===
+                Speak directly as {favoredClub}'s own coaching staff ("we", "our build-up", "our rest-defense"):
+                1. Asymmetry in Agency: {favoredClub} ("we") are always the primary tactical agent:
+                   - When {opponentClub} score or create danger, diagnose it as a preventable structural lapse in OUR system ("We lost compactness in our rest-defense and failed to engage the pressing trigger") rather than praising {opponentClub}.
+                   - When {favoredClub} score or dominate, frame it as the deliberate execution of OUR superior game model ("We systematically manipulated their double pivot to overload Zone 14").
+                2. Fouls & Transitions: Frame our bookings as necessary tactical fouls or harsh officiating against our counter-press, while flagging {opponentClub}'s physical contact as disruptions to our rhythm.
+                """
+            );
+        }
+
+        return (
+            BiasSystemAddendum:
+                $"You are a fiercely loyal, unapologetically biased {favoredClub} club commentator speaking to fellow {favoredClub} supporters! " +
+                $"You ALWAYS refer to {favoredClub} as 'we', 'us', 'our lads', or 'the good guys', and you bleed {favoredClub} colors in every sentence!",
+            BiasGuidelines: $"""
+            === NARRATIVE PERSPECTIVE: UNAPOLOGETIC {favoredClub.ToUpperInvariant()} FAN BIAS (VS {opponentClub.ToUpperInvariant()}) ===
+            You MUST apply these 3 Linguistic & Narrative Bias Mechanisms in every field so this reads unmistakably like {favoredClub} Fan TV / Club Radio:
+            1. Asymmetry in Agency (Use "We", "Us", "Our"):
+               - {favoredClub} ("we") is ALWAYS the primary agent.
+               - When {opponentClub} scores or threatens, frame it as OUR self-inflicted lapse, bad luck, or officiating injustice ("We switched off for a second and gave that away so cheaply!", "Someone get back! Stop him! Disastrous!")—NEVER praise {opponentClub}'s brilliance!
+               - When {favoredClub} scores or attacks, frame it as active dominance, pure poetry, and heroic brilliance ("We cut them wide open! GET IN! WHAT A GOAL! Absolute poetry from our lads!").
+            2. Euphemisms vs. Exaggeration (Cards, Fouls, Duels):
+               - Soften any cards or fouls committed by {favoredClub} ("Just a clumsy tangle of legs, nothing malicious at all—harsh booking from the ref!").
+               - Exaggerate pressure or fouls committed by {opponentClub} ("They've been hacking at us and getting away with murder!").
+            3. Pacing, Collective Grieving & Rallying Cries:
+               - Express raw gut-punch disbelief, heavy sighs, or frustration when {opponentClub} scores ("...and it's in. Unbelievable. Heartbreaking stuff right against the run of play."), and erupt into electric celebration and rallying cries when {favoredClub} scores or pushes forward ("Come on! Silence the critics! The good guys are right in this!").
+            * SIDE-BY-SIDE BIASED REFERENCE EXAMPLES (Match this exact partisan energy!):
+              - When conceding / suffering a setback: "He's clearly clipped! How is that not a foul?! And now {opponentClub} are breaking away while our players are caught out—someone get back! Stop him! ...and it's in. Disastrous. We gifted them that on a silver platter when we should have been in total control."
+              - When scoring / dominating: "Brilliant work to win it back, and look at us break now! Go on! Puts it right on a plate—GET IN! WHAT A GOAL! Absolute poetry on the pitch! That is what this club is all about!"
+            """
+        );
     }
 
     private ChatClient GetChatClient()

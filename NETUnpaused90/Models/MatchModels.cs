@@ -123,6 +123,7 @@ public record ExplainEventRequest(
     string MatchId,
     string EventId,
     string ViewMode = "casual",
+    string? FavoriteTeam = null,
     string? Language = "en"
 );
 

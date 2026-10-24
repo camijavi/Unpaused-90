@@ -153,6 +153,7 @@ public static class AiEndpoints
         matchId: 'PL2027-001',
         eventId: 'EV005',
         viewMode: document.getElementById('mode').value,
+        favoriteTeam: document.getElementById('team').value,
         language: document.getElementById('lang').value
       });
     }
