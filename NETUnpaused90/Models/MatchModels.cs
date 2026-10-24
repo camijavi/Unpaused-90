@@ -133,3 +133,15 @@ public record ExplainEventResponse(
     string Title,
     string Explanation
 );
+
+public record AudioRequest(
+    string Text,
+    string? Voice = "en-US-AdamMultilingualNeural",
+    string? Language = "en"
+);
+
+public record AudioResponse(
+    string AudioUrl,
+    string Voice,
+    string Language
+);

@@ -6,6 +6,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddSingleton<MatchService>();
 builder.Services.AddSingleton<AiService>();
+builder.Services.AddHttpClient<SpeechService>();
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
@@ -49,12 +50,14 @@ app.MapGet("/", () => Results.Ok(new
         "GET  /api/v1/matches/PL2027-001/insights",
         "POST /api/v1/catchup",
         "POST /api/v1/personalized-summary",
-        "POST /api/v1/explain"
+        "POST /api/v1/explain",
+        "POST /api/v1/audio"
     }
 }));
 
 app.MapMatchEndpoints();
 app.MapAiEndpoints();
+app.MapAudioEndpoints();
 app.MapControllers();
 
 app.Run();
