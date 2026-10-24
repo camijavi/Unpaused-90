@@ -1,0 +1,57 @@
+@NETUnpaused90_HostAddress = http://localhost:5165
+
+### 1. Get All Matches
+GET {{NETUnpaused90_HostAddress}}/api/v1/matches
+Accept: application/json
+
+### 2. Get Match Details (Arsenal vs Liverpool)
+GET {{NETUnpaused90_HostAddress}}/api/v1/matches/PL2027-001
+Accept: application/json
+
+### 3. Get Match Timeline (Full Match)
+GET {{NETUnpaused90_HostAddress}}/api/v1/matches/PL2027-001/timeline
+Accept: application/json
+
+### 4. Get Match Timeline up to Minute 60 (Simulating Dad joining at 60')
+GET {{NETUnpaused90_HostAddress}}/api/v1/matches/PL2027-001/timeline?upToMinute=60
+Accept: application/json
+
+### 5. Get Match Insights / Key Moments
+GET {{NETUnpaused90_HostAddress}}/api/v1/matches/PL2027-001/insights
+Accept: application/json
+
+### 6. POST Catch Me Up (Hero Endpoint - Dad left at 30', joined back at 60', Liverpool Fan, Casual Mode)
+POST {{NETUnpaused90_HostAddress}}/api/v1/catchup
+Content-Type: application/json
+
+{
+  "matchId": "PL2027-001",
+  "lastViewedMinute": 30,
+  "currentMinute": 60,
+  "viewMode": "casual",
+  "favoriteTeam": "Liverpool",
+  "language": "en"
+}
+
+### 7. POST Personalized Match Summary (Analyst Mode)
+POST {{NETUnpaused90_HostAddress}}/api/v1/personalized-summary
+Content-Type: application/json
+
+{
+  "matchId": "PL2027-001",
+  "mode": "analyst",
+  "favoriteTeam": "Arsenal",
+  "length": "1m",
+  "language": "en"
+}
+
+### 8. POST Explain Event ("Why It Matters" for EV005 - Salah's 54' Equalizer)
+POST {{NETUnpaused90_HostAddress}}/api/v1/explain
+Content-Type: application/json
+
+{
+  "matchId": "PL2027-001",
+  "eventId": "EV005",
+  "viewMode": "casual",
+  "language": "en"
+}
