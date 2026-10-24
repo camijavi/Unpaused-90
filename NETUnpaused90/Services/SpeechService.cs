@@ -3,7 +3,6 @@ using System.Security;
 using System.Text;
 using System.Text.Json;
 using Azure.Core;
-using Azure.Identity;
 using NETUnpaused90.Models;
 
 namespace NETUnpaused90.Services;
@@ -19,20 +18,13 @@ public class SpeechService
     public SpeechService(
         IConfiguration configuration,
         ILogger<SpeechService> logger,
-        IWebHostEnvironment env,
-        HttpClient httpClient)
+        HttpClient httpClient,
+        TokenCredential credential)
     {
         _configuration = configuration;
         _logger = logger;
         _httpClient = httpClient;
-
-        var tenantId = _configuration["AzureBlob:TenantId"];
-
-        _credential = env.IsDevelopment()
-            ? new ChainedTokenCredential(
-                new AzureCliCredential(new AzureCliCredentialOptions { TenantId = tenantId }),
-                new InteractiveBrowserCredential(new InteractiveBrowserCredentialOptions { TenantId = tenantId }))
-            : new DefaultAzureCredential();
+        _credential = credential;
     }
 
     public async Task<AudioResponse> GenerateAudioUrlAsync(
@@ -61,7 +53,6 @@ public class SpeechService
         var region = _configuration["AzureSpeech:Region"] ?? "westus";
         var defaultVoice = _configuration["AzureSpeech:VoiceName"] ?? "en-US-AdamMultilingualNeural";
 
-        // Default to en-US-AdamMultilingualNeural for both English and Spanish
         var voiceName = NormalizeVoiceName(request.Voice, defaultVoice);
         var isSpanish = string.Equals(request.Language?.Trim(), "es", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(request.Language?.Trim(), "es-ES", StringComparison.OrdinalIgnoreCase) ||
@@ -98,12 +89,12 @@ public class SpeechService
         }
         else
         {
-            // Authenticate via Microsoft Entra ID using the aad#<resourceId>#<accessToken> bearer format
-            var resourceId = await GetSpeechResourceIdAsync(cancellationToken);
+            // Uses the shared cached TokenCredential so it reuses the Cognitive Services token from AiService!
             var tokenResult = await _credential.GetTokenAsync(
                 new TokenRequestContext(["https://cognitiveservices.azure.com/.default"]),
                 cancellationToken);
 
+            var resourceId = await GetSpeechResourceIdAsync(cancellationToken);
             var aadBearerToken = $"aad#{resourceId}#{tokenResult.Token}";
             httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", aadBearerToken);
         }
@@ -119,7 +110,8 @@ public class SpeechService
         {
             var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
             throw new InvalidOperationException(
-                $"Azure AI Speech returned HTTP {(int)response.StatusCode} ({response.ReasonPhrase}): {errorBody}");
+                $"Azure AI Speech returned HTTP {(int)response.StatusCode} ({response.ReasonPhrase}). " +
+                $"Make sure your account has the 'Cognitive Services Speech User' role on 'unpaused-90-speech-service' in Azure Portal (IAM). Details: {errorBody}");
         }
 
         var audioBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);

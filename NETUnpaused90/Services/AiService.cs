@@ -2,7 +2,6 @@ using System.ClientModel;
 using System.Text.Json;
 using Azure.AI.OpenAI;
 using Azure.Core;
-using Azure.Identity;
 using NETUnpaused90.Models;
 using OpenAI.Chat;
 
@@ -12,7 +11,6 @@ public class AiService
 {
     private readonly IConfiguration _configuration;
     private readonly ILogger<AiService> _logger;
-    private readonly IWebHostEnvironment _env;
     private readonly MatchService _matchService;
     private readonly TokenCredential _credential;
     private readonly JsonSerializerOptions _jsonOptions = new()
@@ -23,21 +21,13 @@ public class AiService
     public AiService(
         IConfiguration configuration,
         ILogger<AiService> logger,
-        IWebHostEnvironment env,
-        MatchService matchService)
+        MatchService matchService,
+        TokenCredential credential)
     {
         _configuration = configuration;
         _logger = logger;
-        _env = env;
         _matchService = matchService;
-
-        var tenantId = _configuration["AzureBlob:TenantId"];
-
-        _credential = _env.IsDevelopment()
-            ? new ChainedTokenCredential(
-                new AzureCliCredential(new AzureCliCredentialOptions { TenantId = tenantId }),
-                new InteractiveBrowserCredential(new InteractiveBrowserCredentialOptions { TenantId = tenantId }))
-            : new DefaultAzureCredential();
+        _credential = credential;
     }
 
     public async Task<CatchUpResponse?> GenerateCatchUpAsync(

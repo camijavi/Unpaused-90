@@ -21,8 +21,15 @@ public static class AudioEndpoints
                 return Results.BadRequest(new { error = "Text is required to generate audio." });
             }
 
-            var response = await speechService.GenerateAudioUrlAsync(request, ct);
-            return Results.Ok(response);
+            try
+            {
+                var response = await speechService.GenerateAudioUrlAsync(request, ct);
+                return Results.Ok(response);
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { error = ex.Message }, statusCode: 500);
+            }
         })
         .WithName("GenerateAudio");
 
@@ -37,8 +44,15 @@ public static class AudioEndpoints
                 return Results.BadRequest(new { error = "Text is required to generate audio." });
             }
 
-            var (audioBytes, _, _) = await speechService.SynthesizeSpeechBytesAsync(request, ct);
-            return Results.File(audioBytes, "audio/mpeg", "unpaused90-recap.mp3");
+            try
+            {
+                var (audioBytes, _, _) = await speechService.SynthesizeSpeechBytesAsync(request, ct);
+                return Results.File(audioBytes, "audio/mpeg", "unpaused90-recap.mp3");
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { error = ex.Message }, statusCode: 500);
+            }
         })
         .WithName("GenerateAudioStream");
     }

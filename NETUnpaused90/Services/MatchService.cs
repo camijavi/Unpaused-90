@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Azure.Core;
-using Azure.Identity;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using NETUnpaused90.Models;
@@ -11,7 +10,6 @@ public class MatchService
 {
     private readonly IConfiguration _configuration;
     private readonly ILogger<MatchService> _logger;
-    private readonly IWebHostEnvironment _env;
     private readonly TokenCredential _credential;
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -23,21 +21,11 @@ public class MatchService
     public MatchService(
         IConfiguration configuration,
         ILogger<MatchService> logger,
-        IWebHostEnvironment env)
+        TokenCredential credential)
     {
         _configuration = configuration;
         _logger = logger;
-        _env = env;
-
-        var tenantId = _configuration["AzureBlob:TenantId"];
-
-        // Locally: authenticate directly against your Azure tenant so personal @gmail.com Microsoft accounts work.
-        // In Azure App Service (Production): use Managed Identity via DefaultAzureCredential.
-        _credential = _env.IsDevelopment()
-            ? new ChainedTokenCredential(
-                new AzureCliCredential(new AzureCliCredentialOptions { TenantId = tenantId }),
-                new InteractiveBrowserCredential(new InteractiveBrowserCredentialOptions { TenantId = tenantId }))
-            : new DefaultAzureCredential();
+        _credential = credential;
     }
 
     /// <summary>
