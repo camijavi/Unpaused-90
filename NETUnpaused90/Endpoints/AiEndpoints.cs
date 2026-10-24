@@ -57,28 +57,29 @@ public static class AiEndpoints
   <meta charset="UTF-8" />
   <title>Unpaused 90' — AI & Audio Endpoint Tester</title>
   <style>
-    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; max-width: 850px; margin: 2rem auto; padding: 0 1rem; }
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; max-width: 880px; margin: 2rem auto; padding: 0 1rem; }
     h1 { color: #38bdf8; }
     .card { background: #1e293b; border-radius: 10px; padding: 1.25rem; margin-bottom: 1.25rem; border: 1px solid #334155; }
-    button { background: #0284c7; color: white; border: none; padding: 0.6rem 1.2rem; border-radius: 6px; cursor: pointer; font-weight: 600; margin-right: 0.5rem; margin-top: 0.5rem; }
+    button { background: #0284c7; color: white; border: none; padding: 0.6rem 1.2rem; border-radius: 6px; cursor: pointer; font-weight: 600; margin-right: 0.5rem; margin-top: 0.65rem; }
     button:hover { background: #0369a1; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
     button.audio-btn { background: #10b981; }
     button.audio-btn:hover { background: #059669; }
     pre { background: #090d16; padding: 1rem; border-radius: 8px; overflow-x: auto; color: #a7f3d0; white-space: pre-wrap; }
-    select, input, textarea { background: #0f172a; color: white; border: 1px solid #475569; padding: 0.4rem 0.6rem; border-radius: 6px; margin-right: 0.5rem; }
-    textarea { width: 96%; height: 70px; margin-top: 0.5rem; font-family: inherit; }
+    select, input, textarea { background: #0f172a; color: white; border: 1px solid #475569; padding: 0.45rem 0.65rem; border-radius: 6px; margin-right: 0.6rem; margin-top: 0.4rem; }
+    textarea { width: 96%; height: 80px; margin-top: 0.5rem; font-family: inherit; }
   </style>
 </head>
 <body>
-  <h1>⚽ Unpaused 90' — AI & Audio Endpoint Tester</h1>
+  <h1>⚽ Unpaused 90' — Summary & Audio Tester</h1>
   <div class="card">
-    <h3>1. Test Hero Endpoint: <code>POST /api/v1/catchup</code></h3>
-    <p>Simulates your dad stopping at minute <input id="lastMin" type="number" value="30" style="width:55px"/> and returning at minute <input id="currMin" type="number" value="60" style="width:55px"/></p>
-    <label>Mode:
+    <h3>1. Configure Personalized Catch-Up & Summary</h3>
+    <p>Simulates stopping at minute <input id="lastMin" type="number" value="30" style="width:55px"/> and returning at minute <input id="currMin" type="number" value="60" style="width:55px"/></p>
+    <label>Audience Mode:
       <select id="mode">
         <option value="casual">Casual Fan</option>
-        <option value="analyst">Analyst</option>
-        <option value="kid">Kid Mode</option>
+        <option value="analyst">Analyst / Coach</option>
+        <option value="kid">Young Child (6-10)</option>
       </select>
     </label>
     <label>Favorite Team:
@@ -88,6 +89,13 @@ public static class AiEndpoints
         <option value="Neutral">Neutral</option>
       </select>
     </label>
+    <label>Summary Length:
+      <select id="length">
+        <option value="1m">1 minute</option>
+        <option value="5m">5 minutes</option>
+        <option value="full">Full summary</option>
+      </select>
+    </label>
     <label>Language:
       <select id="lang">
         <option value="en">English</option>
@@ -95,58 +103,118 @@ public static class AiEndpoints
       </select>
     </label>
     <br/>
-    <button onclick="testCatchUp()">🚀 Run Catch Me Up (GPT-4o)</button>
-    <button onclick="testSummary()">📊 Test POST /api/v1/personalized-summary</button>
-    <button onclick="testExplain()">💡 Test POST /api/v1/explain (Salah 54' Goal)</button>
+    <button id="btnCatchUp" onclick="testCatchUp()">⚽ Catch Me Up</button>
+    <button id="btnSummary" onclick="testSummary()">⚽ Match Summary</button>
+    <button id="btnExplain" onclick="testExplain()">⚽ Explain Salah 54' Goal</button>
   </div>
 
   <div class="card">
-    <h3>2. Test Audio Endpoint: <code>POST /api/v1/audio</code> (en-US-AdamMultilingualNeural)</h3>
-    <p style="margin:0 0 0.4rem 0; font-size:0.9rem; color:#94a3b8;">Automatically fills with the latest AI response above, or type any English/Spanish text:</p>
+    <h3>2. 🎧 Audio Recap Player</h3>
     <textarea id="ttsText">Welcome back to Unpaused 90! While you were at the gym, Arsenal broke the deadlock in the 31st minute through Bukayo Saka, before Mohamed Salah equalized for Liverpool in the 54th minute!</textarea>
     <br/>
-    <button class="audio-btn" onclick="testAudio()">🎧 Generate & Play Audio (AdamMultilingualNeural)</button>
+    <button id="btnAudio" class="audio-btn" onclick="testAudio()">🎧 Play Audio</button>
     <div style="margin-top: 0.85rem;">
-      <audio id="audioPlayer" controls style="width: 100%; display: none;"></audio>
+      <audio id="audioPlayer" autoplay controls style="width: 100%; display: none;"></audio>
     </div>
   </div>
 
   <div class="card">
     <h3>Response Output:</h3>
-    <pre id="output">Click any button above to test your .NET Minimal API...</pre>
+    <pre id="output">Select your options above and click Catch Me Up...</pre>
   </div>
 
   <script>
     const out = document.getElementById('output');
     const ttsInput = document.getElementById('ttsText');
     const audioPlayer = document.getElementById('audioPlayer');
+    let currentBlobUrl = null;
+    let activeGenerationId = 0;
+
+    // Immediately stops and flushes any previous audio so old audio can NEVER replay
+    function resetAudioPlayer() {
+      audioPlayer.pause();
+      audioPlayer.currentTime = 0;
+      if (currentBlobUrl) {
+        URL.revokeObjectURL(currentBlobUrl);
+        currentBlobUrl = null;
+      }
+      audioPlayer.removeAttribute('src');
+      audioPlayer.load();
+      audioPlayer.style.display = 'none';
+    }
+
+    // Converts base64 MP3 data URI into a unique Blob Object URL so the browser never plays a cached stream
+    function playFreshAudioDataUrl(dataUrl) {
+      resetAudioPlayer();
+      const base64Index = dataUrl.indexOf('base64,');
+      const base64 = base64Index !== -1 ? dataUrl.substring(base64Index + 7) : dataUrl;
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: 'audio/mpeg' });
+      currentBlobUrl = URL.createObjectURL(blob);
+      audioPlayer.src = currentBlobUrl;
+      audioPlayer.style.display = 'block';
+      audioPlayer.play().catch(() => {});
+    }
 
     async function callApi(url, body) {
-      out.textContent = '⏳ Calling ' + url + '...';
+      const myGenId = ++activeGenerationId;
+      resetAudioPlayer();
+      ttsInput.value = 'Generating new summary...';
+      out.textContent = 'Step 1/2: Generating text summary...';
+
       try {
+        // Step 1: Fetch text first (IncludeAudio = false) so text renders on screen immediately!
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
+          body: JSON.stringify({ ...body, includeAudio: false })
         });
-        const text = await res.text();
-        try {
-          const json = JSON.parse(text);
-          out.textContent = JSON.stringify(json, null, 2);
+        if (myGenId !== activeGenerationId) return;
 
-          // Automatically populate the Audio box with the generated AI text!
-          if (json.whatHappened) {
-            ttsInput.value = `${json.whatHappened} ${json.whyItMatters} ${json.whatToWatchNext}`;
-          } else if (json.story) {
-            ttsInput.value = json.story;
-          } else if (json.explanation) {
-            ttsInput.value = `${json.title}. ${json.explanation}`;
+        const text = await res.text();
+        const json = JSON.parse(text);
+
+        let narrationScript = '';
+        if (json.whatHappened) {
+          narrationScript = `${json.whatHappened}\n\n${json.whyItMatters}\n\n${json.momentumChanges}\n\n${json.whatToWatchNext}`;
+        } else if (json.story) {
+          narrationScript = json.story;
+        } else if (json.explanation) {
+          narrationScript = `${json.title}. ${json.explanation}`;
+        }
+
+        ttsInput.value = narrationScript;
+        out.textContent = JSON.stringify(json, null, 2) + '\n\nStep 2/2: Synthesizing and auto-playing new audio...';
+
+        // Step 2: Immediately synthesize & auto-play the new audio using the assigned alternating voice!
+        if (narrationScript) {
+          const audioRes = await fetch('/api/v1/audio', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: narrationScript,
+              voice: json.voice || null,
+              language: body.language || 'en'
+            })
+          });
+          if (myGenId !== activeGenerationId) return;
+
+          const audioJson = await audioRes.json();
+          if (audioJson.audioUrl) {
+            playFreshAudioDataUrl(audioJson.audioUrl);
+            json.voice = audioJson.voice;
+            json.audioStatus = 'Auto-playing fresh audio (' + audioJson.voice + ')';
+            out.textContent = JSON.stringify(json, null, 2);
           }
-        } catch {
-          out.textContent = 'Status ' + res.status + ':\n' + text;
         }
       } catch (err) {
-        out.textContent = '❌ Error: ' + err;
+        if (myGenId === activeGenerationId) {
+          out.textContent = 'Error: ' + err;
+        }
       }
     }
 
@@ -157,7 +225,8 @@ public static class AiEndpoints
         currentMinute: parseInt(document.getElementById('currMin').value),
         viewMode: document.getElementById('mode').value,
         favoriteTeam: document.getElementById('team').value,
-        language: document.getElementById('lang').value
+        language: document.getElementById('lang').value,
+        length: document.getElementById('length').value
       });
     }
 
@@ -166,7 +235,7 @@ public static class AiEndpoints
         matchId: 'PL2027-001',
         mode: document.getElementById('mode').value,
         favoriteTeam: document.getElementById('team').value,
-        length: '1m',
+        length: document.getElementById('length').value,
         language: document.getElementById('lang').value
       });
     }
@@ -182,33 +251,35 @@ public static class AiEndpoints
     }
 
     async function testAudio() {
-      out.textContent = '⏳ Synthesizing speech with Azure AI Speech (en-US-AdamMultilingualNeural)...';
+      const myGenId = ++activeGenerationId;
+      resetAudioPlayer();
+      out.textContent = 'Synthesizing new audio...';
       try {
         const res = await fetch('/api/v1/audio', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             text: ttsInput.value,
-            voice: 'en-US-AdamMultilingualNeural',
             language: document.getElementById('lang').value
           })
         });
-        const text = await res.text();
-        const json = JSON.parse(text);
+        if (myGenId !== activeGenerationId) return;
+
+        const json = await res.json();
         if (json.audioUrl) {
-          audioPlayer.src = json.audioUrl;
-          audioPlayer.style.display = 'block';
-          audioPlayer.play();
+          playFreshAudioDataUrl(json.audioUrl);
           out.textContent = JSON.stringify({
             voice: json.voice,
             language: json.language,
-            audioUrl: json.audioUrl.substring(0, 60) + '... [base64 MP3 audio]'
+            audioStatus: 'Auto-playing fresh audio'
           }, null, 2);
         } else {
-          out.textContent = 'Status ' + res.status + ':\n' + text;
+          out.textContent = JSON.stringify(json, null, 2);
         }
       } catch (err) {
-        out.textContent = '❌ Error: ' + err;
+        if (myGenId === activeGenerationId) {
+          out.textContent = 'Error: ' + err;
+        }
       }
     }
   </script>
