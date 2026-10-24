@@ -96,7 +96,7 @@ public record CatchUpRequest(
     string? FavoriteTeam = null,
     string? Language = "en",
     string Length = "1m",
-    bool IncludeAudio = true
+    bool IncludeAudio = false
 );
 
 public record CatchUpResponse(
@@ -107,6 +107,7 @@ public record CatchUpResponse(
     string? Length = "1m",
     int? WordCount = null,
     int? EstimatedDurationSeconds = null,
+    string? Voice = null,
     string? AudioUrl = null
 );
 
@@ -116,7 +117,7 @@ public record PersonalizedSummaryRequest(
     string? FavoriteTeam = null,
     string Length = "1m",
     string? Language = "en",
-    bool IncludeAudio = true
+    bool IncludeAudio = false
 );
 
 public record PersonalizedSummaryResponse(
@@ -127,6 +128,7 @@ public record PersonalizedSummaryResponse(
     string Length = "1m",
     int WordCount = 0,
     int EstimatedDurationSeconds = 0,
+    string? Voice = null,
     string? AudioUrl = null
 );
 

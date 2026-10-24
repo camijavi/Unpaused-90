@@ -62,6 +62,7 @@ public static class AiEndpoints
     .card { background: #1e293b; border-radius: 10px; padding: 1.25rem; margin-bottom: 1.25rem; border: 1px solid #334155; }
     button { background: #0284c7; color: white; border: none; padding: 0.6rem 1.2rem; border-radius: 6px; cursor: pointer; font-weight: 600; margin-right: 0.5rem; margin-top: 0.65rem; }
     button:hover { background: #0369a1; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
     button.audio-btn { background: #10b981; }
     button.audio-btn:hover { background: #059669; }
     pre { background: #090d16; padding: 1rem; border-radius: 8px; overflow-x: auto; color: #a7f3d0; white-space: pre-wrap; }
@@ -102,16 +103,16 @@ public static class AiEndpoints
       </select>
     </label>
     <br/>
-    <button onclick="testCatchUp()">⚽ Catch Me Up</button>
-    <button onclick="testSummary()">⚽ Match Summary</button>
-    <button onclick="testExplain()">⚽ Explain Salah 54' Goal</button>
+    <button id="btnCatchUp" onclick="testCatchUp()">⚽ Catch Me Up</button>
+    <button id="btnSummary" onclick="testSummary()">⚽ Match Summary</button>
+    <button id="btnExplain" onclick="testExplain()">⚽ Explain Salah 54' Goal</button>
   </div>
 
   <div class="card">
     <h3>2. 🎧 Audio Recap Player</h3>
     <textarea id="ttsText">Welcome back to Unpaused 90! While you were at the gym, Arsenal broke the deadlock in the 31st minute through Bukayo Saka, before Mohamed Salah equalized for Liverpool in the 54th minute!</textarea>
     <br/>
-    <button class="audio-btn" onclick="testAudio()">🎧 Play Audio</button>
+    <button id="btnAudio" class="audio-btn" onclick="testAudio()">🎧 Play Audio</button>
     <div style="margin-top: 0.85rem;">
       <audio id="audioPlayer" autoplay controls style="width: 100%; display: none;"></audio>
     </div>
@@ -126,40 +127,94 @@ public static class AiEndpoints
     const out = document.getElementById('output');
     const ttsInput = document.getElementById('ttsText');
     const audioPlayer = document.getElementById('audioPlayer');
+    let currentBlobUrl = null;
+    let activeGenerationId = 0;
+
+    // Immediately stops and flushes any previous audio so old audio can NEVER replay
+    function resetAudioPlayer() {
+      audioPlayer.pause();
+      audioPlayer.currentTime = 0;
+      if (currentBlobUrl) {
+        URL.revokeObjectURL(currentBlobUrl);
+        currentBlobUrl = null;
+      }
+      audioPlayer.removeAttribute('src');
+      audioPlayer.load();
+      audioPlayer.style.display = 'none';
+    }
+
+    // Converts base64 MP3 data URI into a unique Blob Object URL so the browser never plays a cached stream
+    function playFreshAudioDataUrl(dataUrl) {
+      resetAudioPlayer();
+      const base64Index = dataUrl.indexOf('base64,');
+      const base64 = base64Index !== -1 ? dataUrl.substring(base64Index + 7) : dataUrl;
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: 'audio/mpeg' });
+      currentBlobUrl = URL.createObjectURL(blob);
+      audioPlayer.src = currentBlobUrl;
+      audioPlayer.style.display = 'block';
+      audioPlayer.play().catch(() => {});
+    }
 
     async function callApi(url, body) {
-      out.textContent = 'Generating summary and audio...';
+      const myGenId = ++activeGenerationId;
+      resetAudioPlayer();
+      ttsInput.value = 'Generating new summary...';
+      out.textContent = 'Step 1/2: Generating text summary...';
+
       try {
+        // Step 1: Fetch text first (IncludeAudio = false) so text renders on screen immediately!
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
+          body: JSON.stringify({ ...body, includeAudio: false })
         });
+        if (myGenId !== activeGenerationId) return;
+
         const text = await res.text();
-        try {
-          const json = JSON.parse(text);
+        const json = JSON.parse(text);
 
-          if (json.whatHappened) {
-            ttsInput.value = `${json.whatHappened}\n\n${json.whyItMatters}\n\n${json.momentumChanges}\n\n${json.whatToWatchNext}`;
-          } else if (json.story) {
-            ttsInput.value = json.story;
-          } else if (json.explanation) {
-            ttsInput.value = `${json.title}. ${json.explanation}`;
+        let narrationScript = '';
+        if (json.whatHappened) {
+          narrationScript = `${json.whatHappened}\n\n${json.whyItMatters}\n\n${json.momentumChanges}\n\n${json.whatToWatchNext}`;
+        } else if (json.story) {
+          narrationScript = json.story;
+        } else if (json.explanation) {
+          narrationScript = `${json.title}. ${json.explanation}`;
+        }
+
+        ttsInput.value = narrationScript;
+        out.textContent = JSON.stringify(json, null, 2) + '\n\nStep 2/2: Synthesizing and auto-playing new audio...';
+
+        // Step 2: Immediately synthesize & auto-play the new audio using the assigned alternating voice!
+        if (narrationScript) {
+          const audioRes = await fetch('/api/v1/audio', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: narrationScript,
+              voice: json.voice || null,
+              language: body.language || 'en'
+            })
+          });
+          if (myGenId !== activeGenerationId) return;
+
+          const audioJson = await audioRes.json();
+          if (audioJson.audioUrl) {
+            playFreshAudioDataUrl(audioJson.audioUrl);
+            json.voice = audioJson.voice;
+            json.audioStatus = 'Auto-playing fresh audio (' + audioJson.voice + ')';
+            out.textContent = JSON.stringify(json, null, 2);
           }
-
-          if (json.audioUrl) {
-            audioPlayer.src = json.audioUrl;
-            audioPlayer.style.display = 'block';
-            audioPlayer.play().catch(() => {});
-            json.audioUrl = json.audioUrl.substring(0, 60) + '... [base64 MP3 audio auto-playing]';
-          }
-
-          out.textContent = JSON.stringify(json, null, 2);
-        } catch {
-          out.textContent = 'Status ' + res.status + ':\n' + text;
         }
       } catch (err) {
-        out.textContent = 'Error: ' + err;
+        if (myGenId === activeGenerationId) {
+          out.textContent = 'Error: ' + err;
+        }
       }
     }
 
@@ -171,8 +226,7 @@ public static class AiEndpoints
         viewMode: document.getElementById('mode').value,
         favoriteTeam: document.getElementById('team').value,
         language: document.getElementById('lang').value,
-        length: document.getElementById('length').value,
-        includeAudio: true
+        length: document.getElementById('length').value
       });
     }
 
@@ -182,8 +236,7 @@ public static class AiEndpoints
         mode: document.getElementById('mode').value,
         favoriteTeam: document.getElementById('team').value,
         length: document.getElementById('length').value,
-        language: document.getElementById('lang').value,
-        includeAudio: true
+        language: document.getElementById('lang').value
       });
     }
 
@@ -198,7 +251,9 @@ public static class AiEndpoints
     }
 
     async function testAudio() {
-      out.textContent = 'Synthesizing speech...';
+      const myGenId = ++activeGenerationId;
+      resetAudioPlayer();
+      out.textContent = 'Synthesizing new audio...';
       try {
         const res = await fetch('/api/v1/audio', {
           method: 'POST',
@@ -208,22 +263,23 @@ public static class AiEndpoints
             language: document.getElementById('lang').value
           })
         });
-        const text = await res.text();
-        const json = JSON.parse(text);
+        if (myGenId !== activeGenerationId) return;
+
+        const json = await res.json();
         if (json.audioUrl) {
-          audioPlayer.src = json.audioUrl;
-          audioPlayer.style.display = 'block';
-          audioPlayer.play().catch(() => {});
+          playFreshAudioDataUrl(json.audioUrl);
           out.textContent = JSON.stringify({
             voice: json.voice,
             language: json.language,
-            audioUrl: json.audioUrl.substring(0, 60) + '... [base64 MP3 audio auto-playing]'
+            audioStatus: 'Auto-playing fresh audio'
           }, null, 2);
         } else {
-          out.textContent = 'Status ' + res.status + ':\n' + text;
+          out.textContent = JSON.stringify(json, null, 2);
         }
       } catch (err) {
-        out.textContent = 'Error: ' + err;
+        if (myGenId === activeGenerationId) {
+          out.textContent = 'Error: ' + err;
+        }
       }
     }
   </script>

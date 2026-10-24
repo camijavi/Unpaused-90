@@ -32,6 +32,17 @@ public class SpeechService
         _credential = credential;
     }
 
+    /// <summary>
+    /// Picks the next alternating voice (Ollie on odd turns, Ada on even turns) for a newly generated summary.
+    /// </summary>
+    public string NextAlternatingVoice()
+    {
+        var maleVoice = _configuration["AzureSpeech:MaleVoiceName"] ?? MaleBritishVoice;
+        var femaleVoice = _configuration["AzureSpeech:FemaleVoiceName"] ?? FemaleBritishVoice;
+        var turn = Interlocked.Increment(ref _voiceTurnCounter);
+        return (turn % 2 == 1) ? maleVoice : femaleVoice;
+    }
+
     public async Task<AudioResponse> GenerateAudioUrlAsync(
         AudioRequest request,
         CancellationToken cancellationToken = default)
@@ -56,20 +67,18 @@ public class SpeechService
         }
 
         var region = _configuration["AzureSpeech:Region"] ?? "westus";
-        var maleVoice = _configuration["AzureSpeech:MaleVoiceName"] ?? MaleBritishVoice;
-        var femaleVoice = _configuration["AzureSpeech:FemaleVoiceName"] ?? FemaleBritishVoice;
-
         var isSpanish = string.Equals(request.Language?.Trim(), "es", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(request.Language?.Trim(), "es-ES", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(request.Language?.Trim(), "es-MX", StringComparison.OrdinalIgnoreCase);
 
         var xmlLang = isSpanish ? "es-MX" : "en-GB";
 
-        // Alternate between Ollie (Male) and Ada (Female) on each generated summary/audio!
-        var turn = Interlocked.Increment(ref _voiceTurnCounter);
-        var selectedVoice = (turn % 2 == 1) ? maleVoice : femaleVoice;
+        // If the caller specifies the voice (e.g. locked in for the current summary's progressive chunks), use it;
+        // otherwise pick the next alternating voice between Ollie and Ada.
+        var selectedVoice = !string.IsNullOrWhiteSpace(request.Voice)
+            ? request.Voice.Trim()
+            : NextAlternatingVoice();
 
-        // Split paragraphs so we can synthesize them in PARALLEL (Task.WhenAll) using the SAME voice for speed
         var segments = request.Text
             .Split(["\r\n\r\n", "\n\n"], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(s => !string.IsNullOrWhiteSpace(s))
@@ -96,7 +105,7 @@ public class SpeechService
         var ttsUrl = $"https://{region}.tts.speech.microsoft.com/cognitiveservices/v1";
 
         _logger.LogInformation(
-            "Synthesizing audio summary using voice '{VoiceName}' ({Language}) across {SegmentCount} parallel chunk(s)...",
+            "Synthesizing audio using voice '{VoiceName}' ({Language}) across {SegmentCount} parallel chunk(s)...",
             selectedVoice,
             xmlLang,
             segments.Count);
@@ -154,10 +163,6 @@ public class SpeechService
         return await response.Content.ReadAsByteArrayAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// Builds energetic, emotionally dynamic SSML for the selected British Multilingual voice (Ollie or Ada),
-    /// modulating pitch, speaking rate, and emphasis sentence-by-sentence so it sounds like live commentary.
-    /// </summary>
     private static string BuildEmotionalSegmentSsml(string segmentText, string voiceName, string xmlLang)
     {
         var sentences = Regex.Split(segmentText.Trim(), @"(?<=[.!?])\s+")
