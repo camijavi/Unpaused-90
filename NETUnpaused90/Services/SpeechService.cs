@@ -61,17 +61,12 @@ public class SpeechService
         var xmlLang = isSpanish ? "es-MX" : "en-US";
         var escapedText = SecurityElement.Escape(request.Text);
 
-        var ssml = $"""
-            <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
-              <voice name="{voiceName}">
-                <lang xml:lang="{xmlLang}">
-                  <prosody rate="+4%">
-                    {escapedText}
-                  </prosody>
-                </lang>
-              </voice>
-            </speak>
-            """;
+        var ssml =
+            $"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{xmlLang}'>" +
+            $"<voice name='{voiceName}'>" +
+            $"<lang xml:lang='{xmlLang}'>{escapedText}</lang>" +
+            $"</voice>" +
+            $"</speak>";
 
         var ttsUrl = $"https://{region}.tts.speech.microsoft.com/cognitiveservices/v1";
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, ttsUrl)
@@ -89,7 +84,6 @@ public class SpeechService
         }
         else
         {
-            // Uses the shared cached TokenCredential so it reuses the Cognitive Services token from AiService!
             var tokenResult = await _credential.GetTokenAsync(
                 new TokenRequestContext(["https://cognitiveservices.azure.com/.default"]),
                 cancellationToken);
@@ -159,31 +153,61 @@ public class SpeechService
             new TokenRequestContext(["https://management.azure.com/.default"]),
             cancellationToken);
 
-        var armUrl = $"https://management.azure.com/resources?api-version=2021-04-01&$filter=name eq '{resourceName}'";
-        using var armReq = new HttpRequestMessage(HttpMethod.Get, armUrl);
-        armReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", armToken.Token);
+        // Step 1: Get active subscription(s)
+        using var subReq = new HttpRequestMessage(
+            HttpMethod.Get,
+            "https://management.azure.com/subscriptions?api-version=2022-12-01");
+        subReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", armToken.Token);
 
-        using var armRes = await _httpClient.SendAsync(armReq, cancellationToken);
-        armRes.EnsureSuccessStatusCode();
+        using var subRes = await _httpClient.SendAsync(subReq, cancellationToken);
+        subRes.EnsureSuccessStatusCode();
 
-        using var doc = await JsonDocument.ParseAsync(
-            await armRes.Content.ReadAsStreamAsync(cancellationToken),
+        using var subDoc = await JsonDocument.ParseAsync(
+            await subRes.Content.ReadAsStreamAsync(cancellationToken),
             cancellationToken: cancellationToken);
 
-        if (doc.RootElement.TryGetProperty("value", out var valueArr) &&
-            valueArr.GetArrayLength() > 0 &&
-            valueArr[0].TryGetProperty("id", out var idProp))
+        if (subDoc.RootElement.TryGetProperty("value", out var subsArr))
         {
-            _cachedResourceId = idProp.GetString();
-            if (!string.IsNullOrWhiteSpace(_cachedResourceId))
+            foreach (var sub in subsArr.EnumerateArray())
             {
-                _logger.LogInformation("Discovered Speech Resource ID: {ResourceId}", _cachedResourceId);
-                return _cachedResourceId;
+                if (!sub.TryGetProperty("subscriptionId", out var subIdProp))
+                {
+                    continue;
+                }
+
+                var subId = subIdProp.GetString();
+                var filter = Uri.EscapeDataString($"name eq '{resourceName}'");
+                var armUrl = $"https://management.azure.com/subscriptions/{subId}/resources?api-version=2021-04-01&$filter={filter}";
+
+                using var armReq = new HttpRequestMessage(HttpMethod.Get, armUrl);
+                armReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", armToken.Token);
+
+                using var armRes = await _httpClient.SendAsync(armReq, cancellationToken);
+                if (!armRes.IsSuccessStatusCode)
+                {
+                    continue;
+                }
+
+                using var doc = await JsonDocument.ParseAsync(
+                    await armRes.Content.ReadAsStreamAsync(cancellationToken),
+                    cancellationToken: cancellationToken);
+
+                if (doc.RootElement.TryGetProperty("value", out var valueArr) &&
+                    valueArr.GetArrayLength() > 0 &&
+                    valueArr[0].TryGetProperty("id", out var idProp))
+                {
+                    _cachedResourceId = idProp.GetString();
+                    if (!string.IsNullOrWhiteSpace(_cachedResourceId))
+                    {
+                        _logger.LogInformation("Discovered Speech Resource ID: {ResourceId}", _cachedResourceId);
+                        return _cachedResourceId;
+                    }
+                }
             }
         }
 
         throw new InvalidOperationException(
             $"Could not auto-discover Azure Resource ID for Speech resource '{resourceName}'. " +
-            "Add 'AzureSpeech:ResourceId' in appsettings.json.");
+            "Please add 'AzureSpeech:ResourceId' in appsettings.json (found in Azure Portal -> unpaused-90-speech-service -> Properties -> Resource ID).");
     }
 }
