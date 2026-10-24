@@ -88,17 +88,47 @@ public record MatchSummaryDto(
     string Status
 );
 
-public record CatchUpRequest (
+public record CatchUpRequest(
     string MatchId,
     int LastViewedMinute,
     int CurrentMinute,
-    string ViewMode,
-    string? FavoriteTeam
+    string ViewMode = "casual",
+    string? FavoriteTeam = null,
+    string? Language = "en"
 );
 
-public record CatchUpResponse (
+public record CatchUpResponse(
     string WhatHappened,
     string WhyItMatters,
     string MomentumChanges,
     string WhatToWatchNext
+);
+
+public record PersonalizedSummaryRequest(
+    string MatchId,
+    string Mode = "casual",
+    string? FavoriteTeam = null,
+    string? Length = "1m",
+    string? Language = "en"
+);
+
+public record PersonalizedSummaryResponse(
+    string MatchId,
+    string Mode,
+    string? FavoriteTeam,
+    string Story
+);
+
+public record ExplainEventRequest(
+    string MatchId,
+    string EventId,
+    string ViewMode = "casual",
+    string? Language = "en"
+);
+
+public record ExplainEventResponse(
+    string EventId,
+    int Minute,
+    string Title,
+    string Explanation
 );

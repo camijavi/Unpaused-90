@@ -19,3 +19,39 @@ Accept: application/json
 ### 5. Get Match Insights / Key Moments
 GET {{NETUnpaused90_HostAddress}}/api/v1/matches/PL2027-001/insights
 Accept: application/json
+
+### 6. POST Catch Me Up (Hero Endpoint - Dad left at 30', joined back at 60', Liverpool Fan, Casual Mode)
+POST {{NETUnpaused90_HostAddress}}/api/v1/catchup
+Content-Type: application/json
+
+{
+  "matchId": "PL2027-001",
+  "lastViewedMinute": 30,
+  "currentMinute": 60,
+  "viewMode": "casual",
+  "favoriteTeam": "Liverpool",
+  "language": "en"
+}
+
+### 7. POST Personalized Match Summary (Analyst Mode)
+POST {{NETUnpaused90_HostAddress}}/api/v1/personalized-summary
+Content-Type: application/json
+
+{
+  "matchId": "PL2027-001",
+  "mode": "analyst",
+  "favoriteTeam": "Arsenal",
+  "length": "1m",
+  "language": "en"
+}
+
+### 8. POST Explain Event ("Why It Matters" for EV005 - Salah's 54' Equalizer)
+POST {{NETUnpaused90_HostAddress}}/api/v1/explain
+Content-Type: application/json
+
+{
+  "matchId": "PL2027-001",
+  "eventId": "EV005",
+  "viewMode": "casual",
+  "language": "en"
+}
