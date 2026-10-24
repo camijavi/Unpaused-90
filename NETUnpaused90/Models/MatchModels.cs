@@ -96,7 +96,7 @@ public record CatchUpRequest(
     string? FavoriteTeam = null,
     string? Language = "en",
     string Length = "1m",
-    bool IncludeAudio = false
+    bool IncludeAudio = true
 );
 
 public record CatchUpResponse(
@@ -116,7 +116,7 @@ public record PersonalizedSummaryRequest(
     string? FavoriteTeam = null,
     string Length = "1m",
     string? Language = "en",
-    bool IncludeAudio = false
+    bool IncludeAudio = true
 );
 
 public record PersonalizedSummaryResponse(
@@ -147,7 +147,7 @@ public record ExplainEventResponse(
 
 public record AudioRequest(
     string Text,
-    string? Voice = "en-US-AdamMultilingualNeural",
+    string? Voice = null,
     string? Language = "en"
 );
 

@@ -67,11 +67,10 @@ public static class AiEndpoints
     pre { background: #090d16; padding: 1rem; border-radius: 8px; overflow-x: auto; color: #a7f3d0; white-space: pre-wrap; }
     select, input, textarea { background: #0f172a; color: white; border: 1px solid #475569; padding: 0.45rem 0.65rem; border-radius: 6px; margin-right: 0.6rem; margin-top: 0.4rem; }
     textarea { width: 96%; height: 80px; margin-top: 0.5rem; font-family: inherit; }
-    .badge { display: inline-block; background: #334155; color: #38bdf8; padding: 0.25rem 0.6rem; border-radius: 999px; font-size: 0.85rem; margin-right: 0.5rem; }
   </style>
 </head>
 <body>
-  <h1>⚽ Unpaused 90' — United Text & Audio Summary Tester</h1>
+  <h1>⚽ Unpaused 90' — Summary & Audio Tester</h1>
   <div class="card">
     <h3>1. Configure Personalized Catch-Up & Summary</h3>
     <p>Simulates stopping at minute <input id="lastMin" type="number" value="30" style="width:55px"/> and returning at minute <input id="currMin" type="number" value="60" style="width:55px"/></p>
@@ -91,9 +90,9 @@ public static class AiEndpoints
     </label>
     <label>Summary Length:
       <select id="length">
-        <option value="1m">⏱️ 1 Minute (~125 words + pauses)</option>
-        <option value="5m">🎙️ 5 Minutes (~600 words + pauses)</option>
-        <option value="full">📖 Full Summary (No Time Limit)</option>
+        <option value="1m">1 minute</option>
+        <option value="5m">5 minutes</option>
+        <option value="full">Full summary</option>
       </select>
     </label>
     <label>Language:
@@ -103,44 +102,33 @@ public static class AiEndpoints
       </select>
     </label>
     <br/>
-    <label style="display:inline-flex; align-items:center; margin-top:0.65rem; cursor:pointer; color:#a7f3d0; font-weight:600;">
-      <input id="includeAudio" type="checkbox" checked style="margin-right:0.4rem; margin-top:0;" />
-      🎧 Unite Text + Audio (Automatically synthesize & play expressive speech with emotional pauses)
-    </label>
-    <br/>
-    <button onclick="testCatchUp()">🚀 Run Catch Me Up (POST /api/v1/catchup)</button>
-    <button onclick="testSummary()">📊 Run Match Summary (POST /api/v1/personalized-summary)</button>
-    <button onclick="testExplain()">💡 Explain Salah 54' Goal (POST /api/v1/explain)</button>
+    <button onclick="testCatchUp()">⚽ Catch Me Up</button>
+    <button onclick="testSummary()">⚽ Match Summary</button>
+    <button onclick="testExplain()">⚽ Explain Salah 54' Goal</button>
   </div>
 
   <div class="card">
-    <h3>2. Audio Recap Player (<code>en-US-AdamMultilingualNeural</code>)</h3>
-    <div id="metricsBar" style="margin-bottom: 0.6rem; display:none;">
-      <span class="badge" id="lengthBadge"></span>
-      <span class="badge" id="wordsBadge"></span>
-      <span class="badge" id="durationBadge"></span>
-    </div>
-    <textarea id="ttsText">Welcome back to Unpaused 90! ... While you were at the gym, Arsenal broke the deadlock in the 31st minute through Bukayo Saka—before Mohamed Salah equalized for Liverpool in the 54th minute!</textarea>
+    <h3>2. 🎧 Audio Recap Player</h3>
+    <textarea id="ttsText">Welcome back to Unpaused 90! While you were at the gym, Arsenal broke the deadlock in the 31st minute through Bukayo Saka, before Mohamed Salah equalized for Liverpool in the 54th minute!</textarea>
     <br/>
-    <button class="audio-btn" onclick="testAudio()">🎧 Re-synthesize Audio Only (POST /api/v1/audio)</button>
+    <button class="audio-btn" onclick="testAudio()">🎧 Play Audio</button>
     <div style="margin-top: 0.85rem;">
-      <audio id="audioPlayer" controls style="width: 100%; display: none;"></audio>
+      <audio id="audioPlayer" autoplay controls style="width: 100%; display: none;"></audio>
     </div>
   </div>
 
   <div class="card">
     <h3>Response Output:</h3>
-    <pre id="output">Click any button above to test your .NET Minimal API...</pre>
+    <pre id="output">Select your options above and click Catch Me Up...</pre>
   </div>
 
   <script>
     const out = document.getElementById('output');
     const ttsInput = document.getElementById('ttsText');
     const audioPlayer = document.getElementById('audioPlayer');
-    const metricsBar = document.getElementById('metricsBar');
 
     async function callApi(url, body) {
-      out.textContent = '⏳ Calling ' + url + ' (generating timed text' + (body.includeAudio ? ' + expressive audio' : '') + ')...';
+      out.textContent = 'Generating summary and audio...';
       try {
         const res = await fetch(url, {
           method: 'POST',
@@ -159,20 +147,11 @@ public static class AiEndpoints
             ttsInput.value = `${json.title}. ${json.explanation}`;
           }
 
-          if (json.wordCount !== undefined && json.estimatedDurationSeconds !== undefined) {
-            metricsBar.style.display = 'block';
-            document.getElementById('lengthBadge').textContent = 'Mode: ' + (json.length || body.length);
-            document.getElementById('wordsBadge').textContent = 'Words: ' + json.wordCount;
-            const mins = Math.floor(json.estimatedDurationSeconds / 60);
-            const secs = json.estimatedDurationSeconds % 60;
-            document.getElementById('durationBadge').textContent = `Est. Read Time (with pauses): ${mins}m ${secs}s`;
-          }
-
           if (json.audioUrl) {
             audioPlayer.src = json.audioUrl;
             audioPlayer.style.display = 'block';
-            audioPlayer.play();
-            json.audioUrl = json.audioUrl.substring(0, 60) + '... [base64 MP3 audio playing above]';
+            audioPlayer.play().catch(() => {});
+            json.audioUrl = json.audioUrl.substring(0, 60) + '... [base64 MP3 audio auto-playing]';
           }
 
           out.textContent = JSON.stringify(json, null, 2);
@@ -180,7 +159,7 @@ public static class AiEndpoints
           out.textContent = 'Status ' + res.status + ':\n' + text;
         }
       } catch (err) {
-        out.textContent = '❌ Error: ' + err;
+        out.textContent = 'Error: ' + err;
       }
     }
 
@@ -193,7 +172,7 @@ public static class AiEndpoints
         favoriteTeam: document.getElementById('team').value,
         language: document.getElementById('lang').value,
         length: document.getElementById('length').value,
-        includeAudio: document.getElementById('includeAudio').checked
+        includeAudio: true
       });
     }
 
@@ -204,7 +183,7 @@ public static class AiEndpoints
         favoriteTeam: document.getElementById('team').value,
         length: document.getElementById('length').value,
         language: document.getElementById('lang').value,
-        includeAudio: document.getElementById('includeAudio').checked
+        includeAudio: true
       });
     }
 
@@ -219,14 +198,13 @@ public static class AiEndpoints
     }
 
     async function testAudio() {
-      out.textContent = '⏳ Synthesizing speech with Azure AI Speech (en-US-AdamMultilingualNeural)...';
+      out.textContent = 'Synthesizing speech...';
       try {
         const res = await fetch('/api/v1/audio', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             text: ttsInput.value,
-            voice: 'en-US-AdamMultilingualNeural',
             language: document.getElementById('lang').value
           })
         });
@@ -235,17 +213,17 @@ public static class AiEndpoints
         if (json.audioUrl) {
           audioPlayer.src = json.audioUrl;
           audioPlayer.style.display = 'block';
-          audioPlayer.play();
+          audioPlayer.play().catch(() => {});
           out.textContent = JSON.stringify({
             voice: json.voice,
             language: json.language,
-            audioUrl: json.audioUrl.substring(0, 60) + '... [base64 MP3 audio]'
+            audioUrl: json.audioUrl.substring(0, 60) + '... [base64 MP3 audio auto-playing]'
           }, null, 2);
         } else {
           out.textContent = 'Status ' + res.status + ':\n' + text;
         }
       } catch (err) {
-        out.textContent = '❌ Error: ' + err;
+        out.textContent = 'Error: ' + err;
       }
     }
   </script>

@@ -75,8 +75,8 @@ public class AiService
         var (normalizedLength, lengthGuidelines, maxTokens) = GetSummaryLengthProfile(request.Length, isCatchUp: true);
 
         var languageInstruction = string.Equals(request.Language, "es", StringComparison.OrdinalIgnoreCase)
-            ? "Write all JSON field values in Spanish, strictly preserving the Audience Persona, Club Bias, and Spoken Narration Length."
-            : "Write all JSON field values in English.";
+            ? "Write all JSON field values in Mexican Spanish (es-MX), strictly preserving the Audience Persona, Club Bias, and Spoken Narration Length."
+            : "Write all JSON field values in British English (en-GB).";
 
         var prompt = $@"
 A viewer stopped watching the match at minute {request.LastViewedMinute}' and returned at minute {request.CurrentMinute}'.
@@ -86,6 +86,9 @@ A viewer stopped watching the match at minute {request.LastViewedMinute}' and re
 {biasGuidelines}
 
 {lengthGuidelines}
+
+VOCAL EMOTION & DELIVERY:
+- Write with genuine vocal emotion, dynamic energy, exclamation marks (!) on big moments, and rhetorical questions (?) so the neural commentator voice rises and falls with real match excitement—never flat or robotic!
 
 LANGUAGE: {languageInstruction}
 
@@ -177,8 +180,8 @@ Return ONLY a valid JSON object with these exact 4 keys:
         var (normalizedLength, lengthGuidelines, maxTokens) = GetSummaryLengthProfile(request.Length, isCatchUp: false);
 
         var languageInstruction = string.Equals(request.Language, "es", StringComparison.OrdinalIgnoreCase)
-            ? "Write the story in Spanish, strictly preserving the Audience Persona, Club Bias, and Spoken Narration Length."
-            : "Write the story in English.";
+            ? "Write the story in Mexican Spanish (es-MX), strictly preserving the Audience Persona, Club Bias, and Spoken Narration Length."
+            : "Write the story in British English (en-GB).";
 
         var prompt = $@"
 Generate a personalized match recap for {match.HomeTeam.Name} ({match.HomeTeam.Score}) vs {match.AwayTeam.Name} ({match.AwayTeam.Score}).
@@ -188,6 +191,9 @@ Generate a personalized match recap for {match.HomeTeam.Name} ({match.HomeTeam.S
 {biasGuidelines}
 
 {lengthGuidelines}
+
+VOCAL EMOTION & DELIVERY:
+- Write with dynamic broadcast emotion, exclamation marks (!) on big moments, and rhetorical questions (?) so the neural commentator voice sounds alive and expressive.
 
 LANGUAGE: {languageInstruction}
 
@@ -280,8 +286,8 @@ Return ONLY a valid JSON object with the exact key:
             request.ViewMode);
 
         var languageInstruction = string.Equals(request.Language, "es", StringComparison.OrdinalIgnoreCase)
-            ? "Write title and explanation in Spanish, strictly preserving both the Audience Persona and the Club Bias mechanisms."
-            : "Write title and explanation in English.";
+            ? "Write title and explanation in Mexican Spanish (es-MX), strictly preserving both the Audience Persona and the Club Bias mechanisms."
+            : "Write title and explanation in British English (en-GB).";
 
         var prompt = $@"
 Explain WHY this specific football event happened and why it matters in {match.HomeTeam.Name} ({match.HomeTeam.Formation}) vs {match.AwayTeam.Name} ({match.AwayTeam.Formation}).
@@ -304,7 +310,7 @@ OVERALL STATS:
 Return ONLY a valid JSON object with the exact keys:
 {{
   ""title"": ""Short headline in the persona's voice and club bias"",
-  ""explanation"": ""3-4 sentences explaining the event strictly in the persona's voice and club bias.""
+  ""explanation"": ""2-3 punchy sentences explaining the event strictly in the persona's voice and club bias.""
 }}";
 
         var chatClient = GetChatClient();
@@ -334,10 +340,6 @@ Return ONLY a valid JSON object with the exact keys:
         );
     }
 
-    /// <summary>
-    /// Enforces word count and emotional pacing rules so the text takes the exact target time
-    /// when spoken aloud at a natural, unhurried broadcast pace (~120 words/min + emotional pauses).
-    /// </summary>
     private static (string NormalizedLength, string LengthGuidelines, int MaxTokens) GetSummaryLengthProfile(
         string? length,
         bool isCatchUp)
@@ -350,42 +352,30 @@ Return ONLY a valid JSON object with the exact keys:
                 NormalizedLength: "5m",
                 LengthGuidelines: isCatchUp
                     ? """
-                    === SPOKEN NARRATION LENGTH & PACING TARGET: 5-MINUTE BROADCAST SEGMENT (~550–650 WORDS TOTAL) ===
-                    * This text will be read aloud by a neural voice narrator at an unhurried, expressive broadcast pace (~120 words per minute) with dramatic emotional pauses.
-                    * STRICT WORD COUNT TARGET: Write 550 to 650 words in total across the 4 JSON fields (~140 to 165 words / 2 full paragraphs per field). Do NOT write a short summary!
-                    * EMOTIONAL PACING & BREATH CUES:
-                      - Write specifically for spoken narration.
-                      - Use ellipses ("...") for heavy sighs, disbelief, or building suspense (the audio engine turns "..." into a 600ms pause).
-                      - Use em-dashes ("—") for sudden turns of play or dramatic emphasis (the audio engine turns "—" into a 400ms beat).
-                      - Unpack the complete build-up, player roles, tactical shifts, stadium atmosphere, and stakes in rich detail across each of the 4 fields.
+                    === INTERNAL SPOKEN NARRATION LENGTH TARGET: 5-MINUTE EXTENDED BROADCAST (700–850 WORDS TOTAL) ===
+                    * CRITICAL REQUIREMENT: Each of the 4 JSON fields (whatHappened, whyItMatters, momentumChanges, whatToWatchNext) MUST be 3 FULL PARAGRAPHS separated by "\n\n" (at least 175–210 words per field, totaling 700–850 words across all 4 fields!).
+                    * Do NOT write short 1-paragraph fields! Unpack every single minute of play, player positioning, buildup sequence, tactical duel, crowd reaction, and subplot in deep, vivid detail across 3 paragraphs per field.
                     """
                     : """
-                    === SPOKEN NARRATION LENGTH & PACING TARGET: 5-MINUTE BROADCAST SEGMENT (~550–650 WORDS) ===
-                    * This text will be read aloud by a neural voice narrator at an unhurried, expressive broadcast pace (~120 words per minute) with dramatic emotional pauses.
-                    * STRICT WORD COUNT TARGET: Write a 550 to 650 word multi-paragraph broadcast narrative (4 to 5 rich paragraphs separated by double newlines "\n\n"). Do NOT write a short summary!
-                    * EMOTIONAL PACING & BREATH CUES:
-                      - Use ellipses ("...") for dramatic tension or sighs, and em-dashes ("—") for sudden transitions so the voice narrator pauses naturally with real emotion.
+                    === INTERNAL SPOKEN NARRATION LENGTH TARGET: 5-MINUTE EXTENDED BROADCAST (700–850 WORDS) ===
+                    * CRITICAL REQUIREMENT: Write 6 to 8 FULL PARAGRAPHS separated by "\n\n", totaling 700 to 850 words!
+                    * Do NOT write a short summary! Unpack every phase of the match, player matchups, tactical shifts, and emotional highs and lows in rich detail.
                     """,
-                MaxTokens: 2500
+                MaxTokens: 3200
             ),
 
             "full" or "deep-dive" or "deepdive" or "unlimited" => (
                 NormalizedLength: "full",
                 LengthGuidelines: isCatchUp
                     ? """
-                    === SPOKEN NARRATION LENGTH & PACING TARGET: FULL UNABRIDGED BREAKDOWN (NO TIME LIMIT, ~800–1,000+ WORDS TOTAL) ===
-                    * Time does not matter—deliver the complete, unabridged, exhaustive match breakdown!
-                    * STRICT WORD COUNT TARGET: Write 800 to 1,000+ words in total across the 4 JSON fields (~200 to 250 words / 2–3 deep paragraphs per field).
-                    * EMOTIONAL PACING & BREATH CUES:
-                      - Write for expressive spoken delivery with natural pauses ("..." for suspense/sighs, "—" for dramatic beats, and paragraph breaks).
-                      - Leave no detail out: analyze every event in the window, individual player matchups, coaching adjustments, tactical causality, and the complete outlook ahead.
+                    === INTERNAL SPOKEN NARRATION LENGTH TARGET: FULL UNABRIDGED BREAKDOWN (1,000+ WORDS TOTAL) ===
+                    * Time does not matter—deliver the complete, exhaustive, unabridged match breakdown!
+                    * CRITICAL REQUIREMENT: Each of the 4 JSON fields MUST contain 4 FULL PARAGRAPHS separated by "\n\n" (250+ words per field, 1,000+ words total).
                     """
                     : """
-                    === SPOKEN NARRATION LENGTH & PACING TARGET: FULL UNABRIDGED BREAKDOWN (NO TIME LIMIT, ~800–1,000+ WORDS) ===
-                    * Time does not matter—deliver the complete, unabridged, exhaustive match documentary narrative!
-                    * STRICT WORD COUNT TARGET: Write 800 to 1,000+ words across 6+ comprehensive paragraphs separated by "\n\n".
-                    * EMOTIONAL PACING & BREATH CUES:
-                      - Use ellipses ("...") and em-dashes ("—") throughout so the spoken narration breathes and carries full dramatic weight.
+                    === INTERNAL SPOKEN NARRATION LENGTH TARGET: FULL UNABRIDGED BREAKDOWN (1,000+ WORDS) ===
+                    * Time does not matter—deliver the complete, exhaustive, unabridged match breakdown!
+                    * CRITICAL REQUIREMENT: Write 8 to 10 FULL PARAGRAPHS separated by "\n\n" (1,000+ words total).
                     """,
                 MaxTokens: 4096
             ),
@@ -394,29 +384,19 @@ Return ONLY a valid JSON object with the exact keys:
                 NormalizedLength: "1m",
                 LengthGuidelines: isCatchUp
                     ? """
-                    === SPOKEN NARRATION LENGTH & PACING TARGET: 1-MINUTE AUDIO & TEXT SUMMARY (~115–135 WORDS TOTAL) ===
-                    * This text will be read aloud at a natural, unhurried pace (~120 words per minute) with ~10 seconds of emotional pauses, taking almost exactly 1 MINUTE (60 seconds) to listen to.
-                    * STRICT WORD COUNT TARGET: Write 115 to 135 words in total across all 4 JSON fields combined (~28 to 34 words / 2 punchy sentences per field).
-                    * EMOTIONAL PACING & BREATH CUES:
-                      - Do NOT rush or cram wall-to-wall words; give the narrator room to breathe!
-                      - Include 1 or 2 deliberate ellipses ("...") or em-dashes ("—") per field to create natural dramatic pauses when spoken aloud.
+                    === INTERNAL SPOKEN NARRATION LENGTH TARGET: RAPID FLASH CATCH-UP (STRICT MAXIMUM 25–30 SECONDS / 65–80 WORDS TOTAL) ===
+                    * CRITICAL REQUIREMENT: The ENTIRE response across all 4 JSON fields combined MUST NOT EXCEED 75–80 WORDS TOTAL (strictly 15–20 words / 1 single punchy sentence per field)!
+                    * Keep it ultra-concise, electric, and instant so the fan gets caught up in under 30 seconds!
                     """
                     : """
-                    === SPOKEN NARRATION LENGTH & PACING TARGET: 1-MINUTE AUDIO & TEXT SUMMARY (~115–135 WORDS) ===
-                    * This text will be read aloud at a natural, unhurried pace (~120 words per minute) with ~10 seconds of emotional pauses, taking almost exactly 1 MINUTE (60 seconds) to listen to.
-                    * STRICT WORD COUNT TARGET: Write 115 to 135 words in total (2 tight, expressive paragraphs separated by "\n\n").
-                    * EMOTIONAL PACING & BREATH CUES:
-                      - Include deliberate ellipses ("...") and em-dashes ("—") to create natural dramatic pauses when spoken aloud.
+                    === INTERNAL SPOKEN NARRATION LENGTH TARGET: RAPID FLASH SUMMARY (STRICT MAXIMUM 25–30 SECONDS / 65–80 WORDS TOTAL) ===
+                    * CRITICAL REQUIREMENT: Write 2 short, punchy paragraphs separated by "\n\n" totaling strictly 65 to 80 words (takes under 30 seconds to listen to)!
                     """,
-                MaxTokens: 800
+                MaxTokens: 350
             )
         };
     }
 
-    /// <summary>
-    /// Calculates the word count and estimated spoken duration in seconds at an unhurried
-    /// broadcast pace (~120 words/min = 2.0 words/sec) plus emotional pause durations.
-    /// </summary>
     private static (int WordCount, int EstimatedDurationSeconds) CalculateSpokenMetrics(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -425,16 +405,8 @@ Return ONLY a valid JSON object with the exact keys:
         }
 
         var words = Regex.Matches(text, @"[\p{L}\p{N}']+").Count;
-        var ellipsesCount = Regex.Matches(text, @"\.{3,}").Count;
-        var dashCount = Regex.Matches(text, @"—|--| - ").Count;
-        var paragraphBreaks = Regex.Matches(text, @"(\r?\n)+").Count;
-        var sentenceCount = Regex.Matches(text, @"[.!?]+").Count;
-
-        // 120 words per minute (0.5s per word) + pause time from SSML breaks
-        var speechSeconds = words * 0.50;
-        var pauseSeconds = (ellipsesCount * 0.60) + (dashCount * 0.40) + (paragraphBreaks * 0.60) + (sentenceCount * 0.25);
-
-        return (words, (int)Math.Round(speechSeconds + pauseSeconds));
+        var seconds = (int)Math.Round(words / 2.75);
+        return (words, Math.Max(1, seconds));
     }
 
     private static (string SystemPersona, string ModeGuidelines, float Temperature) GetAudiencePersonaProfile(string? mode)
@@ -513,7 +485,7 @@ Return ONLY a valid JSON object with the exact keys:
                   - Exhaustive data sheets or raw metric dumps.
                   - Childish fairy-tale metaphors (no "wizards" or "castles").
                 * REFERENCE STYLE EXAMPLE (Match this exact conversational broadcast tone!):
-                  "Right around the half-hour mark, Arsenal finally broke the deadlock. After pinning Liverpool back for twenty minutes, Odegaard caught the defense flat-footed with a slick through-ball to Bukayo Saka, who buried it to make it 1-0. Just when it looked like Arsenal were cruising in the second half, Mohamed Salah silenced the stadium in the 54th minute with a clinical equalizer against the run of play—completely flipping the momentum in this massive title-race clash."
+                  "Right around the half-hour mark, Arsenal finally broke the deadlock! After pinning Liverpool back for twenty minutes, Odegaard caught the defense flat-footed with a slick through-ball to Bukayo Saka, who buried it to make it 1-0! Just when it looked like Arsenal were cruising in the second half, Mohamed Salah silenced the stadium in the 54th minute with a clinical equalizer against the run of play—completely flipping the momentum in this massive title-race clash!"
                 """,
                 Temperature: 0.65f
             )

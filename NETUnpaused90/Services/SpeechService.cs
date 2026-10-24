@@ -10,11 +10,15 @@ namespace NETUnpaused90.Services;
 
 public class SpeechService
 {
+    private const string MaleBritishVoice = "en-GB-OllieMultilingualNeural";
+    private const string FemaleBritishVoice = "en-GB-AdaMultilingualNeural";
+
     private readonly IConfiguration _configuration;
     private readonly ILogger<SpeechService> _logger;
     private readonly HttpClient _httpClient;
     private readonly TokenCredential _credential;
     private string? _cachedResourceId;
+    private int _voiceTurnCounter;
 
     public SpeechService(
         IConfiguration configuration,
@@ -52,27 +56,76 @@ public class SpeechService
         }
 
         var region = _configuration["AzureSpeech:Region"] ?? "westus";
-        var defaultVoice = _configuration["AzureSpeech:VoiceName"] ?? "en-US-AdamMultilingualNeural";
+        var maleVoice = _configuration["AzureSpeech:MaleVoiceName"] ?? MaleBritishVoice;
+        var femaleVoice = _configuration["AzureSpeech:FemaleVoiceName"] ?? FemaleBritishVoice;
 
-        var voiceName = NormalizeVoiceName(request.Voice, defaultVoice);
         var isSpanish = string.Equals(request.Language?.Trim(), "es", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(request.Language?.Trim(), "es-ES", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(request.Language?.Trim(), "es-MX", StringComparison.OrdinalIgnoreCase);
 
-        var xmlLang = isSpanish ? "es-MX" : "en-US";
-        var expressiveSsmlBody = BuildExpressiveSsmlBody(request.Text);
+        var xmlLang = isSpanish ? "es-MX" : "en-GB";
 
-        // Use a natural, unhurried broadcast pace (-4% rate) with genuine SSML <break> pauses for emotion
-        var ssml =
-            $"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{xmlLang}'>" +
-            $"<voice name='{voiceName}'>" +
-            $"<lang xml:lang='{xmlLang}'>" +
-            $"<prosody rate='-4%'>{expressiveSsmlBody}</prosody>" +
-            $"</lang>" +
-            $"</voice>" +
-            $"</speak>";
+        // Alternate between Ollie (Male) and Ada (Female) on each generated summary/audio!
+        var turn = Interlocked.Increment(ref _voiceTurnCounter);
+        var selectedVoice = (turn % 2 == 1) ? maleVoice : femaleVoice;
+
+        // Split paragraphs so we can synthesize them in PARALLEL (Task.WhenAll) using the SAME voice for speed
+        var segments = request.Text
+            .Split(["\r\n\r\n", "\n\n"], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToList();
+
+        if (segments.Count == 0)
+        {
+            segments.Add(request.Text.Trim());
+        }
+
+        string? authHeaderValue = null;
+        var apiKey = _configuration["AzureSpeech:ApiKey"];
+        if (string.IsNullOrWhiteSpace(apiKey) || apiKey.StartsWith("<"))
+        {
+            var tokenTask = _credential.GetTokenAsync(
+                new TokenRequestContext(["https://cognitiveservices.azure.com/.default"]),
+                cancellationToken).AsTask();
+            var resourceIdTask = GetSpeechResourceIdAsync(cancellationToken);
+
+            await Task.WhenAll(tokenTask, resourceIdTask);
+            authHeaderValue = $"aad#{resourceIdTask.Result}#{tokenTask.Result.Token}";
+        }
 
         var ttsUrl = $"https://{region}.tts.speech.microsoft.com/cognitiveservices/v1";
+
+        _logger.LogInformation(
+            "Synthesizing audio summary using voice '{VoiceName}' ({Language}) across {SegmentCount} parallel chunk(s)...",
+            selectedVoice,
+            xmlLang,
+            segments.Count);
+
+        var segmentTasks = segments.Select(segmentText =>
+        {
+            var ssml = BuildEmotionalSegmentSsml(segmentText, selectedVoice, xmlLang);
+            return SynthesizeSingleSegmentAsync(ttsUrl, ssml, apiKey, authHeaderValue, cancellationToken);
+        }).ToArray();
+
+        var audioChunks = await Task.WhenAll(segmentTasks);
+
+        var totalBytes = audioChunks.Sum(c => c.Length);
+        using var combinedStream = new MemoryStream(totalBytes);
+        foreach (var chunk in audioChunks)
+        {
+            combinedStream.Write(chunk, 0, chunk.Length);
+        }
+
+        return (combinedStream.ToArray(), selectedVoice, isSpanish ? "es" : "en");
+    }
+
+    private async Task<byte[]> SynthesizeSingleSegmentAsync(
+        string ttsUrl,
+        string ssml,
+        string? apiKey,
+        string? aadBearerToken,
+        CancellationToken cancellationToken)
+    {
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, ttsUrl)
         {
             Content = new StringContent(ssml, Encoding.UTF8, "application/ssml+xml")
@@ -81,84 +134,73 @@ public class SpeechService
         httpRequest.Headers.Add("X-Microsoft-OutputFormat", "audio-24khz-96kbitrate-mono-mp3");
         httpRequest.Headers.Add("User-Agent", "Unpaused90App");
 
-        var apiKey = _configuration["AzureSpeech:ApiKey"];
         if (!string.IsNullOrWhiteSpace(apiKey) && !apiKey.StartsWith("<"))
         {
             httpRequest.Headers.Add("Ocp-Apim-Subscription-Key", apiKey);
         }
-        else
+        else if (!string.IsNullOrWhiteSpace(aadBearerToken))
         {
-            var tokenResult = await _credential.GetTokenAsync(
-                new TokenRequestContext(["https://cognitiveservices.azure.com/.default"]),
-                cancellationToken);
-
-            var resourceId = await GetSpeechResourceIdAsync(cancellationToken);
-            var aadBearerToken = $"aad#{resourceId}#{tokenResult.Token}";
             httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", aadBearerToken);
         }
-
-        _logger.LogInformation(
-            "Calling Azure AI Speech TTS ({TtsUrl}) with voice '{VoiceName}' ({Language})...",
-            ttsUrl,
-            voiceName,
-            xmlLang);
 
         using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
             throw new InvalidOperationException(
-                $"Azure AI Speech returned HTTP {(int)response.StatusCode} ({response.ReasonPhrase}). " +
-                $"Make sure your account has the 'Cognitive Services Speech User' role on 'unpaused-90-speech-service' in Azure Portal (IAM). Details: {errorBody}");
+                $"Azure AI Speech returned HTTP {(int)response.StatusCode} ({response.ReasonPhrase}): {errorBody}");
         }
 
-        var audioBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-        return (audioBytes, voiceName, isSpanish ? "es" : "en");
+        return await response.Content.ReadAsByteArrayAsync(cancellationToken);
     }
 
     /// <summary>
-    /// Escapes raw text for XML and converts dramatic punctuation (..., —, !, paragraph breaks)
-    /// into SSML &lt;break&gt; tags so the narration breathes and conveys real emotion.
+    /// Builds energetic, emotionally dynamic SSML for the selected British Multilingual voice (Ollie or Ada),
+    /// modulating pitch, speaking rate, and emphasis sentence-by-sentence so it sounds like live commentary.
     /// </summary>
-    private static string BuildExpressiveSsmlBody(string rawText)
+    private static string BuildEmotionalSegmentSsml(string segmentText, string voiceName, string xmlLang)
     {
-        var escaped = SecurityElement.Escape(rawText) ?? string.Empty;
+        var sentences = Regex.Split(segmentText.Trim(), @"(?<=[.!?])\s+")
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToList();
 
-        // Paragraph / section breaks -> 750ms pause
-        escaped = Regex.Replace(escaped, @"(\r?\n){2,}", " <break time='750ms'/> ");
-        escaped = Regex.Replace(escaped, @"\r?\n", " <break time='450ms'/> ");
+        var sb = new StringBuilder();
+        sb.Append($"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='https://www.w3.org/2001/mstts' xml:lang='{xmlLang}'>");
+        sb.Append($"<voice name='{voiceName}'>");
+        sb.Append($"<mstts:express-as style='excited' styledegree='1.4'>");
+        sb.Append($"<lang xml:lang='{xmlLang}'>");
 
-        // Ellipses (...) -> 600ms emotional pause (e.g. sighs, disbelief, building tension)
-        escaped = Regex.Replace(escaped, @"\.{3,}", " <break time='600ms'/> ");
-
-        // Em-dashes (— or --) -> 400ms dramatic beat
-        escaped = escaped.Replace("—", " <break time='400ms'/> ")
-                         .Replace(" -- ", " <break time='400ms'/> ")
-                         .Replace(" - ", " <break time='300ms'/> ");
-
-        // Sentence-ending exclamation or period -> natural breath pause
-        escaped = Regex.Replace(escaped, @"!\s+", "! <break time='350ms'/> ");
-        escaped = Regex.Replace(escaped, @"\?\s+", "? <break time='350ms'/> ");
-
-        return escaped;
-    }
-
-    private static string NormalizeVoiceName(string? requestedVoice, string defaultVoice)
-    {
-        if (string.IsNullOrWhiteSpace(requestedVoice))
+        foreach (var rawSentence in sentences)
         {
-            return defaultVoice;
+            var escaped = SecurityElement.Escape(rawSentence.Trim()) ?? string.Empty;
+            var isExclamation = rawSentence.EndsWith('!');
+            var isQuestion = rawSentence.EndsWith('?');
+            var isDramaticSigh = rawSentence.Contains("...");
+
+            if (isExclamation)
+            {
+                sb.Append($"<prosody rate='+14%' pitch='+6%' volume='+12%'>{escaped}</prosody> ");
+            }
+            else if (isQuestion)
+            {
+                sb.Append($"<prosody rate='+11%' pitch='+5%'>{escaped}</prosody> ");
+            }
+            else if (isDramaticSigh)
+            {
+                sb.Append($"<prosody rate='+8%' pitch='-2%'>{escaped}</prosody> ");
+            }
+            else
+            {
+                sb.Append($"<prosody rate='+10%' pitch='+2%'>{escaped}</prosody> ");
+            }
         }
 
-        var trimmed = requestedVoice.Trim();
-        if (trimmed.Contains("AdamMultilingualNeural", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.Contains("damMultilingualNeural", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.Equals("SportsCommentator", StringComparison.OrdinalIgnoreCase))
-        {
-            return "en-US-AdamMultilingualNeural";
-        }
+        sb.Append("</lang>");
+        sb.Append("</mstts:express-as>");
+        sb.Append("</voice>");
+        sb.Append("</speak>");
 
-        return trimmed;
+        return sb.ToString();
     }
 
     private async Task<string> GetSpeechResourceIdAsync(CancellationToken cancellationToken)
@@ -238,6 +280,6 @@ public class SpeechService
 
         throw new InvalidOperationException(
             $"Could not auto-discover Azure Resource ID for Speech resource '{resourceName}'. " +
-            "Please add 'AzureSpeech:ResourceId' in appsettings.json (found in Azure Portal -> unpaused-90-speech-service -> Properties -> Resource ID).");
+            "Please add 'AzureSpeech:ResourceId' in appsettings.json.");
     }
 }
