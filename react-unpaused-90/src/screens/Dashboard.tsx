@@ -24,7 +24,6 @@ import type {
 } from "../types/match";
 
 // Tiny 1-sample silent WAV used to synchronously unlock the HTML5 <audio> element on user click
-// so browser autoplay policy never blocks playback after async Azure OpenAI + Speech calls complete.
 const SILENT_UNLOCK_WAV =
   "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
 
@@ -181,6 +180,7 @@ export const Dashboard: React.FC = () => {
   const currentBlobUrlRef = useRef<string | null>(null);
   const fxTimeoutRef = useRef<number | null>(null);
   const generationIdRef = useRef<number>(0);
+  const hasInitializedRef = useRef<boolean>(false);
 
   const currentMinute = match?.currentMinute ?? 90;
 
@@ -211,9 +211,7 @@ export const Dashboard: React.FC = () => {
         audio.pause();
         audio.currentTime = 0;
       })
-      .catch((err) => {
-        console.debug("Audio gesture unlock note:", err);
-      });
+      .catch(() => {});
   }, [stopAndRevokeCurrentAudio]);
 
   // Converts base64 MP3 data URI into a fresh Blob URL and auto-plays it
@@ -246,7 +244,7 @@ export const Dashboard: React.FC = () => {
             })
             .catch((err) => {
               console.warn(
-                "Autoplay blocked by browser until user clicks Play:",
+                "Audio ready! Click Play in the bottom bar if browser blocked autoplay:",
                 err
               );
               setIsPlaying(false);
@@ -329,9 +327,10 @@ export const Dashboard: React.FC = () => {
       const activeMatchId = match?.matchId ?? "PL2027-001";
       const targetCurrentMin = match?.currentMinute ?? 90;
 
+      let res: CatchUpResponse;
       try {
         // Step 1: Fetch the 4 intelligence cards first (includeAudio: false)
-        const res = await generateCatchUp({
+        res = await generateCatchUp({
           matchId: activeMatchId,
           lastViewedMinute: stoppedMinute,
           currentMinute: targetCurrentMin,
@@ -341,38 +340,50 @@ export const Dashboard: React.FC = () => {
           length,
           includeAudio: false,
         });
-
-        if (myGenId !== generationIdRef.current) return;
-
-        setCatchUp(res);
-        setIsGenerating(false);
-        setStatusBadgeText(
-          `Synced to ${stoppedMinute}'–${targetCurrentMin}' Window`
-        );
-
-        const assignedSpeaker =
-          res.voice && res.voice.toLowerCase().includes("ada")
-            ? "Ada"
-            : "Ollie";
-        setSpeaker(assignedSpeaker);
-
-        const narrationScript = [
-          res.whatHappened,
-          res.whyItMatters,
-          res.momentumChanges,
-          res.whatToWatchNext,
-        ]
-          .filter(Boolean)
-          .join("\n\n");
-
-        if (narrationScript) {
-          setTranscriptLine(res.whatHappened);
+      } catch (err) {
+        console.error("Error in generateCatchUp:", err);
+        if (myGenId === generationIdRef.current) {
+          setIsGenerating(false);
+          setIsSynthesizing(false);
+          const msg = err instanceof Error ? err.message : String(err);
+          setStatusBadgeText("Catch-Up Request Failed");
+          setTranscriptLine(`Catch-Up error: ${msg}`);
         }
+        return;
+      }
 
-        // Step 2: Synthesize & auto-play audio
-        if (autoPlayAudio && narrationScript) {
-          setIsSynthesizing(true);
-          setStatusBadgeText("Synthesizing British AI Audio...");
+      if (myGenId !== generationIdRef.current) return;
+
+      setCatchUp(res);
+      setIsGenerating(false);
+      setStatusBadgeText(
+        `Synced to ${stoppedMinute}'–${targetCurrentMin}' Window`
+      );
+
+      const assignedSpeaker =
+        res.voice && res.voice.toLowerCase().includes("ada")
+          ? "Ada"
+          : "Ollie";
+      setSpeaker(assignedSpeaker);
+
+      const narrationScript = [
+        res.whatHappened,
+        res.whyItMatters,
+        res.momentumChanges,
+        res.whatToWatchNext,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+
+      if (narrationScript) {
+        setTranscriptLine(res.whatHappened);
+      }
+
+      // Step 2: Synthesize & auto-play audio
+      if (autoPlayAudio && narrationScript) {
+        setIsSynthesizing(true);
+        setStatusBadgeText("Synthesizing British AI Audio...");
+        try {
           const audioRes = await synthesizeAudio({
             text: narrationScript,
             voice: res.voice ?? null,
@@ -393,16 +404,14 @@ export const Dashboard: React.FC = () => {
           if (audioRes.audioUrl) {
             playFreshAudioDataUrl(audioRes.audioUrl);
           }
-        }
-      } catch (err) {
-        console.error("Error in runCatchUp / synthesizeAudio:", err);
-        if (myGenId === generationIdRef.current) {
-          setIsGenerating(false);
-          setIsSynthesizing(false);
-          setStatusBadgeText("Backend Offline — Check localhost:5165");
-          setTranscriptLine(
-            "Could not reach .NET backend at http://localhost:5165. Make sure 'dotnet run --project NETUnpaused90' is running."
-          );
+        } catch (audioErr) {
+          console.error("Error in synthesizeAudio:", audioErr);
+          if (myGenId === generationIdRef.current) {
+            setIsSynthesizing(false);
+            setStatusBadgeText(
+              `Synced to ${stoppedMinute}'–${targetCurrentMin}' Window`
+            );
+          }
         }
       }
     },
@@ -419,9 +428,11 @@ export const Dashboard: React.FC = () => {
     ]
   );
 
-  // Initial fetch of match data, timeline, and insights
+  // Single guarded initialization on mount (prevents React StrictMode double-fire)
   useEffect(() => {
-    let cancelled = false;
+    if (hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
+
     async function loadInitialData() {
       try {
         const [matchData, timelineData, insightsData] = await Promise.all([
@@ -429,7 +440,6 @@ export const Dashboard: React.FC = () => {
           fetchMatchTimeline("PL2027-001"),
           fetchMatchInsights("PL2027-001"),
         ]);
-        if (cancelled) return;
         setMatch(matchData);
         setTimeline(timelineData);
         setInsights(insightsData);
@@ -442,17 +452,10 @@ export const Dashboard: React.FC = () => {
         console.error("Failed to load initial match data from backend:", err);
       }
     }
-    loadInitialData();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
-  // Trigger initial text + audio catch-up on mount
-  useEffect(() => {
-    runCatchUp(true, false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    loadInitialData();
+    runCatchUp(false, false);
+  }, [runCatchUp]);
 
   // Handle "Pass Mic to Ada/Ollie" button in Audio Dock
   const handleSwitchSpeaker = async () => {

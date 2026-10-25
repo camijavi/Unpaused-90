@@ -17,11 +17,13 @@ public class SpeechService
     private readonly ILogger<SpeechService> _logger;
     private readonly HttpClient _httpClient;
     private readonly TokenCredential _credential;
+    private readonly string _resourceIdCachePath;
     private string? _cachedResourceId;
     private int _voiceTurnCounter;
 
     public SpeechService(
         IConfiguration configuration,
+        IWebHostEnvironment env,
         ILogger<SpeechService> logger,
         HttpClient httpClient,
         TokenCredential credential)
@@ -30,6 +32,18 @@ public class SpeechService
         _logger = logger;
         _httpClient = httpClient;
         _credential = credential;
+
+        var cacheDir = Path.Combine(env.ContentRootPath, "obj");
+        Directory.CreateDirectory(cacheDir);
+        _resourceIdCachePath = Path.Combine(cacheDir, "speech-resource-id.txt");
+        if (File.Exists(_resourceIdCachePath))
+        {
+            var saved = File.ReadAllText(_resourceIdCachePath).Trim();
+            if (!string.IsNullOrWhiteSpace(saved))
+            {
+                _cachedResourceId = saved;
+            }
+        }
     }
 
     /// <summary>
@@ -73,20 +87,18 @@ public class SpeechService
 
         var xmlLang = isSpanish ? "es-MX" : "en-GB";
 
-        // If the caller specifies the voice (e.g. locked in for the current summary's progressive chunks), use it;
-        // otherwise pick the next alternating voice between Ollie and Ada.
         var selectedVoice = !string.IsNullOrWhiteSpace(request.Voice)
             ? request.Voice.Trim()
             : NextAlternatingVoice();
 
-        var segments = request.Text
+        var paragraphs = request.Text
             .Split(["\r\n\r\n", "\n\n"], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(s => !string.IsNullOrWhiteSpace(s))
             .ToList();
 
-        if (segments.Count == 0)
+        if (paragraphs.Count == 0)
         {
-            segments.Add(request.Text.Trim());
+            paragraphs.Add(request.Text.Trim());
         }
 
         string? authHeaderValue = null;
@@ -105,27 +117,14 @@ public class SpeechService
         var ttsUrl = $"https://{region}.tts.speech.microsoft.com/cognitiveservices/v1";
 
         _logger.LogInformation(
-            "Synthesizing audio using voice '{VoiceName}' ({Language}) across {SegmentCount} parallel chunk(s)...",
+            "Synthesizing audio using voice '{VoiceName}' ({Language})...",
             selectedVoice,
-            xmlLang,
-            segments.Count);
+            xmlLang);
 
-        var segmentTasks = segments.Select(segmentText =>
-        {
-            var ssml = BuildEmotionalSegmentSsml(segmentText, selectedVoice, xmlLang);
-            return SynthesizeSingleSegmentAsync(ttsUrl, ssml, apiKey, authHeaderValue, cancellationToken);
-        }).ToArray();
+        var ssml = BuildUnifiedEmotionalSsml(paragraphs, selectedVoice, xmlLang);
+        var audioBytes = await SynthesizeSingleSegmentAsync(ttsUrl, ssml, apiKey, authHeaderValue, cancellationToken);
 
-        var audioChunks = await Task.WhenAll(segmentTasks);
-
-        var totalBytes = audioChunks.Sum(c => c.Length);
-        using var combinedStream = new MemoryStream(totalBytes);
-        foreach (var chunk in audioChunks)
-        {
-            combinedStream.Write(chunk, 0, chunk.Length);
-        }
-
-        return (combinedStream.ToArray(), selectedVoice, isSpanish ? "es" : "en");
+        return (audioBytes, selectedVoice, isSpanish ? "es" : "en");
     }
 
     private async Task<byte[]> SynthesizeSingleSegmentAsync(
@@ -135,68 +134,87 @@ public class SpeechService
         string? aadBearerToken,
         CancellationToken cancellationToken)
     {
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, ttsUrl)
+        for (int attempt = 1; attempt <= 2; attempt++)
         {
-            Content = new StringContent(ssml, Encoding.UTF8, "application/ssml+xml")
-        };
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, ttsUrl)
+            {
+                Content = new StringContent(ssml, Encoding.UTF8, "application/ssml+xml")
+            };
 
-        httpRequest.Headers.Add("X-Microsoft-OutputFormat", "audio-24khz-96kbitrate-mono-mp3");
-        httpRequest.Headers.Add("User-Agent", "Unpaused90App");
+            httpRequest.Headers.Add("X-Microsoft-OutputFormat", "audio-24khz-96kbitrate-mono-mp3");
+            httpRequest.Headers.Add("User-Agent", "Unpaused90App");
 
-        if (!string.IsNullOrWhiteSpace(apiKey) && !apiKey.StartsWith("<"))
-        {
-            httpRequest.Headers.Add("Ocp-Apim-Subscription-Key", apiKey);
+            if (!string.IsNullOrWhiteSpace(apiKey) && !apiKey.StartsWith("<"))
+            {
+                httpRequest.Headers.Add("Ocp-Apim-Subscription-Key", apiKey);
+            }
+            else if (!string.IsNullOrWhiteSpace(aadBearerToken))
+            {
+                httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", aadBearerToken);
+            }
+
+            using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+            if ((int)response.StatusCode == 429 && attempt == 1)
+            {
+                await Task.Delay(600, cancellationToken);
+                continue;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                throw new InvalidOperationException(
+                    $"Azure AI Speech returned HTTP {(int)response.StatusCode} ({response.ReasonPhrase}): {errorBody}");
+            }
+
+            return await response.Content.ReadAsByteArrayAsync(cancellationToken);
         }
-        else if (!string.IsNullOrWhiteSpace(aadBearerToken))
-        {
-            httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", aadBearerToken);
-        }
 
-        using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            throw new InvalidOperationException(
-                $"Azure AI Speech returned HTTP {(int)response.StatusCode} ({response.ReasonPhrase}): {errorBody}");
-        }
-
-        return await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        throw new InvalidOperationException("Azure AI Speech synthesis failed after retry.");
     }
 
-    private static string BuildEmotionalSegmentSsml(string segmentText, string voiceName, string xmlLang)
+    private static string BuildUnifiedEmotionalSsml(List<string> paragraphs, string voiceName, string xmlLang)
     {
-        var sentences = Regex.Split(segmentText.Trim(), @"(?<=[.!?])\s+")
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .ToList();
-
         var sb = new StringBuilder();
         sb.Append($"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='https://www.w3.org/2001/mstts' xml:lang='{xmlLang}'>");
         sb.Append($"<voice name='{voiceName}'>");
         sb.Append($"<mstts:express-as style='excited' styledegree='1.4'>");
         sb.Append($"<lang xml:lang='{xmlLang}'>");
 
-        foreach (var rawSentence in sentences)
+        for (int pIdx = 0; pIdx < paragraphs.Count; pIdx++)
         {
-            var escaped = SecurityElement.Escape(rawSentence.Trim()) ?? string.Empty;
-            var isExclamation = rawSentence.EndsWith('!');
-            var isQuestion = rawSentence.EndsWith('?');
-            var isDramaticSigh = rawSentence.Contains("...");
+            var sentences = Regex.Split(paragraphs[pIdx].Trim(), @"(?<=[.!?])\s+")
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .ToList();
 
-            if (isExclamation)
+            foreach (var rawSentence in sentences)
             {
-                sb.Append($"<prosody rate='+14%' pitch='+6%' volume='+12%'>{escaped}</prosody> ");
+                var escaped = SecurityElement.Escape(rawSentence.Trim()) ?? string.Empty;
+                var isExclamation = rawSentence.EndsWith('!');
+                var isQuestion = rawSentence.EndsWith('?');
+                var isDramaticSigh = rawSentence.Contains("...");
+
+                if (isExclamation)
+                {
+                    sb.Append($"<prosody rate='+14%' pitch='+6%' volume='+12%'>{escaped}</prosody> ");
+                }
+                else if (isQuestion)
+                {
+                    sb.Append($"<prosody rate='+11%' pitch='+5%'>{escaped}</prosody> ");
+                }
+                else if (isDramaticSigh)
+                {
+                    sb.Append($"<prosody rate='+8%' pitch='-2%'>{escaped}</prosody> ");
+                }
+                else
+                {
+                    sb.Append($"<prosody rate='+10%' pitch='+2%'>{escaped}</prosody> ");
+                }
             }
-            else if (isQuestion)
+
+            if (pIdx < paragraphs.Count - 1)
             {
-                sb.Append($"<prosody rate='+11%' pitch='+5%'>{escaped}</prosody> ");
-            }
-            else if (isDramaticSigh)
-            {
-                sb.Append($"<prosody rate='+8%' pitch='-2%'>{escaped}</prosody> ");
-            }
-            else
-            {
-                sb.Append($"<prosody rate='+10%' pitch='+2%'>{escaped}</prosody> ");
+                sb.Append("<break time='320ms'/> ");
             }
         }
 
@@ -276,6 +294,14 @@ public class SpeechService
                     _cachedResourceId = idProp.GetString();
                     if (!string.IsNullOrWhiteSpace(_cachedResourceId))
                     {
+                        try
+                        {
+                            await File.WriteAllTextAsync(_resourceIdCachePath, _cachedResourceId, cancellationToken);
+                        }
+                        catch
+                        {
+                            // Ignore disk cache write errors
+                        }
                         _logger.LogInformation("Discovered Speech Resource ID: {ResourceId}", _cachedResourceId);
                         return _cachedResourceId;
                     }

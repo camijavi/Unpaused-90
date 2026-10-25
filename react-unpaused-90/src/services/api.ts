@@ -10,10 +10,54 @@ import type {
   TimelineEvent,
 } from "../types/match";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:5165";
+const CANDIDATE_BASES = [
+  import.meta.env.VITE_API_BASE_URL,
+  "http://localhost:5165",
+  "http://127.0.0.1:5165",
+  "https://localhost:7190",
+  "", // Relative path fallback
+].filter((b): b is string => b !== undefined && b !== null);
+
+async function fetchWithFallback(
+  path: string,
+  init?: RequestInit
+): Promise<Response> {
+  let lastError: unknown = null;
+  let lastBadGatewayRes: Response | null = null;
+
+  for (const base of CANDIDATE_BASES) {
+    try {
+      const res = await fetch(`${base}${path}`, init);
+
+      // If a proxy returns 502/503/504 Bad Gateway or Vite returns 404 HTML, try the next base URL
+      const contentType = res.headers.get("content-type") || "";
+      if (
+        res.status === 502 ||
+        res.status === 503 ||
+        res.status === 504 ||
+        (base === "" && res.status === 404 && contentType.includes("text/html"))
+      ) {
+        lastBadGatewayRes = res;
+        continue;
+      }
+
+      return res;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  if (lastBadGatewayRes) {
+    return lastBadGatewayRes;
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Network request failed for ${path}`);
+}
 
 export async function fetchMatchById(matchId = "PL2027-001"): Promise<MatchData> {
-  const res = await fetch(`${API_BASE}/api/v1/matches/${matchId}`);
+  const res = await fetchWithFallback(`/api/v1/matches/${matchId}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch match ${matchId}: ${res.status}`);
   }
@@ -25,7 +69,9 @@ export async function fetchMatchTimeline(
   upToMinute?: number
 ): Promise<TimelineEvent[]> {
   const query = upToMinute !== undefined ? `?upToMinute=${upToMinute}` : "";
-  const res = await fetch(`${API_BASE}/api/v1/matches/${matchId}/timeline${query}`);
+  const res = await fetchWithFallback(
+    `/api/v1/matches/${matchId}/timeline${query}`
+  );
   if (!res.ok) {
     throw new Error(`Failed to fetch timeline for ${matchId}: ${res.status}`);
   }
@@ -37,7 +83,9 @@ export async function fetchMatchInsights(
   upToMinute?: number
 ): Promise<GeneratedInsight[]> {
   const query = upToMinute !== undefined ? `?upToMinute=${upToMinute}` : "";
-  const res = await fetch(`${API_BASE}/api/v1/matches/${matchId}/insights${query}`);
+  const res = await fetchWithFallback(
+    `/api/v1/matches/${matchId}/insights${query}`
+  );
   if (!res.ok) {
     throw new Error(`Failed to fetch insights for ${matchId}: ${res.status}`);
   }
@@ -47,14 +95,14 @@ export async function fetchMatchInsights(
 export async function generateCatchUp(
   payload: CatchUpRequest
 ): Promise<CatchUpResponse> {
-  const res = await fetch(`${API_BASE}/api/v1/catchup`, {
+  const res = await fetchWithFallback(`/api/v1/catchup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...payload, includeAudio: false }),
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
-    throw new Error(`Catch-up generation failed (${res.status}): ${errText}`);
+    throw new Error(`Catch-up error (${res.status}): ${errText}`);
   }
   return res.json();
 }
@@ -62,14 +110,14 @@ export async function generateCatchUp(
 export async function explainTimelineEvent(
   payload: ExplainEventRequest
 ): Promise<ExplainEventResponse> {
-  const res = await fetch(`${API_BASE}/api/v1/explain`, {
+  const res = await fetchWithFallback(`/api/v1/explain`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
-    throw new Error(`Event explanation failed (${res.status}): ${errText}`);
+    throw new Error(`Explain error (${res.status}): ${errText}`);
   }
   return res.json();
 }
@@ -77,14 +125,14 @@ export async function explainTimelineEvent(
 export async function synthesizeAudio(
   payload: AudioRequest
 ): Promise<AudioResponse> {
-  const res = await fetch(`${API_BASE}/api/v1/audio`, {
+  const res = await fetchWithFallback(`/api/v1/audio`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
-    throw new Error(`Audio synthesis failed (${res.status}): ${errText}`);
+    throw new Error(`Audio error (${res.status}): ${errText}`);
   }
   return res.json();
 }
