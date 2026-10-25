@@ -140,7 +140,7 @@ export const Dashboard: React.FC = () => {
   // Hero Console state
   const [stoppedMinute, setStoppedMinute] = useState<number>(30);
   const [mode, setMode] = useState<"casual" | "analyst" | "child">("casual");
-  const [bias, setBias] = useState<"neutral" | "arsenal" | "liverpool">("arsenal");
+  const [bias, setBias] = useState<"neutral" | "arsenal" | "liverpool">("neutral");
   const [length, setLength] = useState<"1m" | "5m" | "full">("1m");
   const [lang, setLang] = useState<"en" | "es">("en");
 
@@ -189,6 +189,8 @@ export const Dashboard: React.FC = () => {
   const hasInitializedRef = useRef<boolean>(false);
   const seenEventIdsRef = useRef<Set<string>>(new Set());
   const prevMinuteRef = useRef<number>(60);
+  const minuteStartTimeRef = useRef<number>(Date.now());
+  const SECONDS_PER_SIMULATED_MINUTE = 30.0;
 
   const currentMinute = match?.currentMinute ?? 60;
   const isFullTime = currentMinute >= 90 || match?.status === "FullTime";
@@ -330,6 +332,7 @@ export const Dashboard: React.FC = () => {
       setInitialStartMinute(matchData.currentMinute);
       setSubSeconds(0);
       prevMinuteRef.current = matchData.currentMinute;
+      minuteStartTimeRef.current = Date.now();
 
       // Record already-elapsed events at the starting minute so only new live events fire animations
       seenEventIdsRef.current = new Set(matchData.timeline.map((e) => e.eventId));
@@ -356,15 +359,20 @@ export const Dashboard: React.FC = () => {
     handleInitializeOrResetSimulation();
   }, [handleInitializeOrResetSimulation]);
 
-  // Visual 1-second sub-minute clock ticker while match is live (< 90')
+  // Broadcast clock simulated seconds ticker (00..59) synchronized to match minute progression
   useEffect(() => {
     if (isFullTime) {
       setSubSeconds(0);
       return;
     }
     const timer = window.setInterval(() => {
-      setSubSeconds((prev) => (prev + 1) % 60);
-    }, 1000);
+      const elapsedRealSec = (Date.now() - minuteStartTimeRef.current) / 1000;
+      const simulatedSec = Math.min(
+        59,
+        Math.floor((elapsedRealSec / SECONDS_PER_SIMULATED_MINUTE) * 60)
+      );
+      setSubSeconds(simulatedSec);
+    }, 150);
     return () => window.clearInterval(timer);
   }, [isFullTime]);
 
@@ -381,6 +389,7 @@ export const Dashboard: React.FC = () => {
 
         if (liveMatch.currentMinute !== prevMinuteRef.current) {
           prevMinuteRef.current = liveMatch.currentMinute;
+          minuteStartTimeRef.current = Date.now();
           setSubSeconds(0);
         }
 

@@ -197,7 +197,7 @@ export const HeroConsole: React.FC<HeroConsoleProps> = ({
                   onClick={() => onChangeBias(item.id)}
                   className={`bias-btn px-2 py-2.5 rounded-lg text-xs transition-all cursor-pointer ${
                     isSelected
-                      ? "font-bold bg-red-600 text-white shadow-sm"
+                      ? "font-bold bg-pl-purple text-white shadow-sm"
                       : "font-semibold bg-white text-slate-700 hover:bg-slate-100 border border-slate-300"
                   }`}
                 >

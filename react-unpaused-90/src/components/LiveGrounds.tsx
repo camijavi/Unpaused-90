@@ -45,7 +45,7 @@ export const LiveGrounds: React.FC<LiveGroundsProps> = ({
           <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
             Random Start:{" "}
             <strong className="text-pl-purple">{initialStartMinute}&apos;</strong>{" "}
-            • Clock: <strong className="text-slate-700">1 min / 4s</strong>
+            • Clock: <strong className="text-slate-700">1 min / 30s (2× Speed)</strong>
           </span>
         )}
         {onResetSimulation && (

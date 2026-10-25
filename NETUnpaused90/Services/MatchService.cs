@@ -8,8 +8,9 @@ namespace NETUnpaused90.Services;
 
 public class MatchService
 {
-    private const double SecondsPerSimulatedMinute = 4.0;
+    public const double DefaultSecondsPerSimulatedMinute = 30.0;
 
+    private readonly double _secondsPerSimulatedMinute;
     private readonly IConfiguration _configuration;
     private readonly ILogger<MatchService> _logger;
     private readonly TokenCredential _credential;
@@ -25,6 +26,8 @@ public class MatchService
     private int _simulationStartMinute;
     private DateTimeOffset _simulationStartUtc;
 
+    public double SecondsPerSimulatedMinute => _secondsPerSimulatedMinute;
+
     public MatchService(
         IConfiguration configuration,
         IWebHostEnvironment env,
@@ -34,6 +37,9 @@ public class MatchService
         _configuration = configuration;
         _logger = logger;
         _credential = credential;
+
+        _secondsPerSimulatedMinute = configuration.GetValue<double?>("Simulation:SecondsPerMinute")
+            ?? DefaultSecondsPerSimulatedMinute;
 
         var cacheDir = Path.Combine(env.ContentRootPath, "obj");
         Directory.CreateDirectory(cacheDir);
@@ -46,7 +52,7 @@ public class MatchService
         _logger.LogInformation(
             "Initialized Live Match Simulation starting at random minute {StartMinute}' (advances 1 min every {Sec}s).",
             _simulationStartMinute,
-            SecondsPerSimulatedMinute);
+            _secondsPerSimulatedMinute);
     }
 
     /// <summary>
@@ -57,7 +63,7 @@ public class MatchService
         lock (_simLock)
         {
             var elapsedSeconds = (DateTimeOffset.UtcNow - _simulationStartUtc).TotalSeconds;
-            var minutesAdvanced = (int)Math.Floor(elapsedSeconds / SecondsPerSimulatedMinute);
+            var minutesAdvanced = (int)Math.Floor(elapsedSeconds / _secondsPerSimulatedMinute);
             return Math.Clamp(_simulationStartMinute + minutesAdvanced, 1, 90);
         }
     }
