@@ -8,17 +8,22 @@ namespace NETUnpaused90.Services;
 
 public class MatchService
 {
+    private const double SecondsPerSimulatedMinute = 4.0;
+
     private readonly IConfiguration _configuration;
     private readonly ILogger<MatchService> _logger;
     private readonly TokenCredential _credential;
     private readonly string _localCacheFilePath;
     private readonly SemaphoreSlim _loadLock = new(1, 1);
+    private readonly object _simLock = new();
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
     };
 
-    private MatchData? _cachedMatch;
+    private MatchData? _masterMatch;
+    private int _simulationStartMinute;
+    private DateTimeOffset _simulationStartUtc;
 
     public MatchService(
         IConfiguration configuration,
@@ -33,29 +38,98 @@ public class MatchService
         var cacheDir = Path.Combine(env.ContentRootPath, "obj");
         Directory.CreateDirectory(cacheDir);
         _localCacheFilePath = Path.Combine(cacheDir, "cached-arsenal-liverpool.json");
+
+        // Step 2: Start at a random minute between 1 and 90 to simulate a match already in progress
+        _simulationStartMinute = Random.Shared.Next(1, 91);
+        _simulationStartUtc = DateTimeOffset.UtcNow;
+
+        _logger.LogInformation(
+            "Initialized Live Match Simulation starting at random minute {StartMinute}' (advances 1 min every {Sec}s).",
+            _simulationStartMinute,
+            SecondsPerSimulatedMinute);
     }
 
     /// <summary>
-    /// Fetches the match data from Azure Blob Storage (with thread-safe caching and instant fallback so startup requests never hang).
+    /// Computes the current simulated match minute (1..90) based on elapsed time since simulation start.
     /// </summary>
-    public async Task<MatchData?> GetMatchAsync(string matchId, CancellationToken cancellationToken = default)
+    public int GetCurrentSimulatedMinute()
     {
-        if (_cachedMatch is not null &&
-            string.Equals(_cachedMatch.MatchId, matchId, StringComparison.OrdinalIgnoreCase))
+        lock (_simLock)
         {
-            return _cachedMatch;
+            var elapsedSeconds = (DateTimeOffset.UtcNow - _simulationStartUtc).TotalSeconds;
+            var minutesAdvanced = (int)Math.Floor(elapsedSeconds / SecondsPerSimulatedMinute);
+            return Math.Clamp(_simulationStartMinute + minutesAdvanced, 1, 90);
+        }
+    }
+
+    /// <summary>
+    /// Resets the live simulation to a new random minute between 1 and 90 (or an explicit minute if provided).
+    /// </summary>
+    public async Task<MatchData?> ResetSimulationAsync(
+        string matchId,
+        int? explicitStartMinute = null,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_simLock)
+        {
+            _simulationStartMinute = explicitStartMinute.HasValue
+                ? Math.Clamp(explicitStartMinute.Value, 1, 90)
+                : Random.Shared.Next(1, 91);
+            _simulationStartUtc = DateTimeOffset.UtcNow;
+        }
+
+        _logger.LogInformation(
+            "Reset Live Match Simulation for '{MatchId}' to starting minute {StartMinute}'.",
+            matchId,
+            _simulationStartMinute);
+
+        return await GetMatchAsync(matchId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Returns the time-sliced MatchData snapshot for the current simulated match minute.
+    /// Strictly follows the predefined synthetic match data (no random events generated).
+    /// </summary>
+    public async Task<MatchData?> GetMatchAsync(
+        string matchId,
+        CancellationToken cancellationToken = default,
+        int? overrideMinute = null)
+    {
+        var master = await GetMasterMatchAsync(matchId, cancellationToken);
+        if (master is null)
+        {
+            return null;
+        }
+
+        var currentMinute = overrideMinute.HasValue
+            ? Math.Clamp(overrideMinute.Value, 1, 90)
+            : GetCurrentSimulatedMinute();
+
+        return BuildMatchSnapshotAtMinute(master, currentMinute);
+    }
+
+    /// <summary>
+    /// Loads the complete 90-minute synthetic match blueprint from Azure Blob Storage (with local cache fallback).
+    /// </summary>
+    public async Task<MatchData?> GetMasterMatchAsync(
+        string matchId,
+        CancellationToken cancellationToken = default)
+    {
+        if (_masterMatch is not null &&
+            string.Equals(_masterMatch.MatchId, matchId, StringComparison.OrdinalIgnoreCase))
+        {
+            return _masterMatch;
         }
 
         await _loadLock.WaitAsync(cancellationToken);
         try
         {
-            if (_cachedMatch is not null &&
-                string.Equals(_cachedMatch.MatchId, matchId, StringComparison.OrdinalIgnoreCase))
+            if (_masterMatch is not null &&
+                string.Equals(_masterMatch.MatchId, matchId, StringComparison.OrdinalIgnoreCase))
             {
-                return _cachedMatch;
+                return _masterMatch;
             }
 
-            // Try local disk cache first if available
             if (File.Exists(_localCacheFilePath))
             {
                 try
@@ -64,10 +138,9 @@ public class MatchService
                     var diskMatch = JsonSerializer.Deserialize<MatchData>(cachedJson, _jsonOptions);
                     if (diskMatch is not null)
                     {
-                        _cachedMatch = diskMatch;
-                        // Trigger non-blocking background refresh from Azure Blob Storage
+                        _masterMatch = diskMatch;
                         _ = Task.Run(() => RefreshFromBlobStorageSilentlyAsync());
-                        return _cachedMatch;
+                        return _masterMatch;
                     }
                 }
                 catch
@@ -76,7 +149,6 @@ public class MatchService
                 }
             }
 
-            // Try live Azure Blob Storage with a 5-second timeout before using fallback
             try
             {
                 using var blobCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -84,8 +156,8 @@ public class MatchService
                 var matchData = await LoadMatchDataFromBlobAsync(blobCts.Token);
                 if (matchData is not null)
                 {
-                    _cachedMatch = matchData;
-                    return _cachedMatch;
+                    _masterMatch = matchData;
+                    return _masterMatch;
                 }
             }
             catch (Exception ex)
@@ -96,13 +168,98 @@ public class MatchService
                 _ = Task.Run(() => RefreshFromBlobStorageSilentlyAsync());
             }
 
-            _cachedMatch = GetBuiltInFallbackMatch();
-            return _cachedMatch;
+            _masterMatch = GetBuiltInFallbackMatch();
+            return _masterMatch;
         }
         finally
         {
             _loadLock.Release();
         }
+    }
+
+    /// <summary>
+    /// Projects the 90-minute master match data onto the specified minute M (1..90).
+    /// </summary>
+    private static MatchData BuildMatchSnapshotAtMinute(MatchData master, int minute)
+    {
+        var activeTimeline = master.Timeline
+            .Where(e => e.Minute <= minute)
+            .OrderBy(e => e.Minute)
+            .ToList();
+
+        var activeInsights = master.GeneratedInsights
+            .Where(i => i.Minute <= minute)
+            .OrderBy(i => i.Minute)
+            .ToList();
+
+        var homeGoals = activeTimeline.Count(e =>
+            e.EventType.Equals("Goal", StringComparison.OrdinalIgnoreCase) &&
+            (e.Team.Equals(master.HomeTeam.TeamId, StringComparison.OrdinalIgnoreCase) ||
+             e.Team.Equals(master.HomeTeam.Name, StringComparison.OrdinalIgnoreCase)));
+
+        var awayGoals = activeTimeline.Count(e =>
+            e.EventType.Equals("Goal", StringComparison.OrdinalIgnoreCase) &&
+            (e.Team.Equals(master.AwayTeam.TeamId, StringComparison.OrdinalIgnoreCase) ||
+             e.Team.Equals(master.AwayTeam.Name, StringComparison.OrdinalIgnoreCase)));
+
+        var status = minute switch
+        {
+            < 45 => "1st Half",
+            45 => "Half Time",
+            < 90 => "2nd Half",
+            _ => "FullTime"
+        };
+
+        // Scale cumulative statistics proportionally to the elapsed match minute, reaching the exact final stats at 90'
+        MatchStats statsAtMinute;
+        if (minute >= 90)
+        {
+            statsAtMinute = master.Statistics;
+        }
+        else
+        {
+            var ratio = Math.Clamp(minute / 90.0, 0.05, 1.0);
+            var homeShotsOnTargetEvents = activeTimeline.Count(e =>
+                (e.Team.Equals(master.HomeTeam.TeamId, StringComparison.OrdinalIgnoreCase) ||
+                 e.Team.Equals(master.HomeTeam.Name, StringComparison.OrdinalIgnoreCase)) &&
+                (e.EventType.Equals("Goal", StringComparison.OrdinalIgnoreCase) ||
+                 (e.EventType.Equals("Shot", StringComparison.OrdinalIgnoreCase) && e.OnTarget == true)));
+
+            var awayShotsOnTargetEvents = activeTimeline.Count(e =>
+                (e.Team.Equals(master.AwayTeam.TeamId, StringComparison.OrdinalIgnoreCase) ||
+                 e.Team.Equals(master.AwayTeam.Name, StringComparison.OrdinalIgnoreCase)) &&
+                (e.EventType.Equals("Goal", StringComparison.OrdinalIgnoreCase) ||
+                 (e.EventType.Equals("Shot", StringComparison.OrdinalIgnoreCase) && e.OnTarget == true)));
+
+            var homeSOT = Math.Max(homeShotsOnTargetEvents, (int)Math.Round(master.Statistics.ShotsOnTarget.Home * ratio));
+            var awaySOT = Math.Max(awayShotsOnTargetEvents, (int)Math.Round(master.Statistics.ShotsOnTarget.Away * ratio));
+            var homeShots = Math.Max(homeSOT, (int)Math.Round(master.Statistics.Shots.Home * ratio));
+            var awayShots = Math.Max(awaySOT, (int)Math.Round(master.Statistics.Shots.Away * ratio));
+
+            statsAtMinute = new MatchStats(
+                Possession: master.Statistics.Possession,
+                Shots: new StatPair(homeShots, awayShots),
+                ShotsOnTarget: new StatPair(homeSOT, awaySOT),
+                PassAccuracy: master.Statistics.PassAccuracy,
+                Corners: new StatPair(
+                    (int)Math.Round(master.Statistics.Corners.Home * ratio),
+                    (int)Math.Round(master.Statistics.Corners.Away * ratio)),
+                Fouls: new StatPair(
+                    (int)Math.Round(master.Statistics.Fouls.Home * ratio),
+                    (int)Math.Round(master.Statistics.Fouls.Away * ratio))
+            );
+        }
+
+        return master with
+        {
+            CurrentMinute = minute,
+            Status = status,
+            HomeTeam = master.HomeTeam with { Score = homeGoals },
+            AwayTeam = master.AwayTeam with { Score = awayGoals },
+            Statistics = statsAtMinute,
+            Timeline = activeTimeline,
+            GeneratedInsights = activeInsights
+        };
     }
 
     private async Task RefreshFromBlobStorageSilentlyAsync()
@@ -113,7 +270,7 @@ public class MatchService
             var fresh = await LoadMatchDataFromBlobAsync(cts.Token);
             if (fresh is not null)
             {
-                _cachedMatch = fresh;
+                _masterMatch = fresh;
             }
         }
         catch
@@ -152,19 +309,9 @@ public class MatchService
         int? upToMinute = null,
         CancellationToken cancellationToken = default)
     {
-        var match = await GetMatchAsync(matchId, cancellationToken);
-        if (match is null)
-        {
-            return null;
-        }
-
-        var timeline = match.Timeline.AsEnumerable();
-        if (upToMinute.HasValue)
-        {
-            timeline = timeline.Where(e => e.Minute <= upToMinute.Value);
-        }
-
-        return timeline.OrderBy(e => e.Minute).ToList();
+        var effectiveMinute = upToMinute ?? GetCurrentSimulatedMinute();
+        var match = await GetMatchAsync(matchId, cancellationToken, effectiveMinute);
+        return match?.Timeline;
     }
 
     public async Task<List<GeneratedInsight>?> GetInsightsAsync(
@@ -172,19 +319,9 @@ public class MatchService
         int? upToMinute = null,
         CancellationToken cancellationToken = default)
     {
-        var match = await GetMatchAsync(matchId, cancellationToken);
-        if (match is null)
-        {
-            return null;
-        }
-
-        var insights = match.GeneratedInsights.AsEnumerable();
-        if (upToMinute.HasValue)
-        {
-            insights = insights.Where(i => i.Minute <= upToMinute.Value);
-        }
-
-        return insights.OrderBy(i => i.Minute).ToList();
+        var effectiveMinute = upToMinute ?? GetCurrentSimulatedMinute();
+        var match = await GetMatchAsync(matchId, cancellationToken, effectiveMinute);
+        return match?.GeneratedInsights;
     }
 
     private async Task<MatchData?> LoadMatchDataFromBlobAsync(CancellationToken cancellationToken)
@@ -278,7 +415,7 @@ public class MatchService
               { "playerId": "LIV08", "name": "Mohamed Salah", "number": 11, "position": "RW", "captain": false },
               { "playerId": "LIV09", "name": "Curtis Jones", "number": 17, "position": "AM", "captain": false },
               { "playerId": "LIV10", "name": "Luis Diaz", "number": 7, "position": "LW", "captain": false },
-              { "playerId": "LIV11", "name": "Darwin Nunez", "number": 9, "position": "ST", "captain": false }
+              { "playerId": "LIV11", "name": "Darwin Nunez", "number": 9, "ST": "ST", "position": "ST", "captain": false }
             ],
             "substitutes": [
               { "playerId": "LIV12", "name": "Caoimhin Kelleher", "number": 62, "position": "GK" },

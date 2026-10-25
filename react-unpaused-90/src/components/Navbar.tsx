@@ -1,6 +1,22 @@
 import React from "react";
 
-export const Navbar: React.FC = () => {
+interface NavbarProps {
+  currentMinute?: number;
+  subSeconds?: number;
+  status?: string;
+  onResetSimulation?: () => void;
+}
+
+export const Navbar: React.FC<NavbarProps> = ({
+  currentMinute = 60,
+  subSeconds = 0,
+  status = "2nd Half",
+  onResetSimulation,
+}) => {
+  const isFullTime = currentMinute >= 90 || status === "FullTime";
+  const mm = String(Math.min(90, Math.max(1, currentMinute))).padStart(2, "0");
+  const ss = isFullTime ? "00" : String(subSeconds % 60).padStart(2, "0");
+
   return (
     <header className="sticky top-0 z-40 bg-gradient-to-r from-[#0F1420]/95 via-[#161D2F]/95 to-[#0F1420]/95 backdrop-blur-xl border-b border-white/10 shadow-[0_8px_30px_rgba(15,23,42,0.22)]">
       {/* Thin Premier League Top Accent Strip */}
@@ -37,18 +53,37 @@ export const Navbar: React.FC = () => {
           </div>
         </div>
 
-        {/* Right: Constant Live Broadcast Telemetry Pill */}
-        <div className="flex items-center gap-2.5 bg-white/[0.07] px-3.5 py-1.5 rounded-xl border border-white/15 backdrop-blur-md shadow-inner">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-          </span>
-          <span
-            className="text-xs font-mono font-extrabold tracking-wider text-slate-100"
-            id="header-live-clock"
-          >
-            LIVE • 60:14
-          </span>
+        {/* Right: Live Simulation Clock Pill + Reset Simulation Button */}
+        <div className="flex items-center gap-2.5">
+          {onResetSimulation && (
+            <button
+              type="button"
+              onClick={onResetSimulation}
+              title="Initialize a new live match simulation starting at a random minute (1'–90')"
+              className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.14] text-mint-bright border border-mint-bright/30 text-[11px] font-mono font-bold uppercase tracking-wider transition-all cursor-pointer"
+            >
+              <span>New Random Match (1&apos;–90&apos;) ↻</span>
+            </button>
+          )}
+
+          <div className="flex items-center gap-2.5 bg-white/[0.07] px-3.5 py-1.5 rounded-xl border border-white/15 backdrop-blur-md shadow-inner">
+            <span className="relative flex h-2.5 w-2.5">
+              {!isFullTime && (
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
+              )}
+              <span
+                className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+                  isFullTime ? "bg-emerald-400" : "bg-red-500"
+                }`}
+              ></span>
+            </span>
+            <span
+              className="text-xs font-mono font-extrabold tracking-wider text-slate-100"
+              id="header-live-clock"
+            >
+              {isFullTime ? `FULL TIME • 90:00` : `LIVE • ${mm}:${ss}`}
+            </span>
+          </div>
         </div>
       </div>
     </header>

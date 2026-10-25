@@ -38,7 +38,7 @@ public class AiService
         CatchUpRequest request,
         CancellationToken cancellationToken = default)
     {
-        var match = await _matchService.GetMatchAsync(request.MatchId, cancellationToken);
+        var match = await _matchService.GetMasterMatchAsync(request.MatchId, cancellationToken);
         if (match is null)
         {
             return null;
@@ -157,7 +157,7 @@ Return ONLY a valid JSON object with these exact 4 keys:
         PersonalizedSummaryRequest request,
         CancellationToken cancellationToken = default)
     {
-        var match = await _matchService.GetMatchAsync(request.MatchId, cancellationToken);
+        var match = await _matchService.GetMasterMatchAsync(request.MatchId, cancellationToken);
         if (match is null)
         {
             return null;
@@ -250,7 +250,7 @@ Return ONLY a valid JSON object with the exact key:
         ExplainEventRequest request,
         CancellationToken cancellationToken = default)
     {
-        var match = await _matchService.GetMatchAsync(request.MatchId, cancellationToken);
+        var match = await _matchService.GetMasterMatchAsync(request.MatchId, cancellationToken);
         if (match is null)
         {
             return null;

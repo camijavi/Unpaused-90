@@ -32,7 +32,9 @@ export const HeroConsole: React.FC<HeroConsoleProps> = ({
   onChangeLang,
   onCatchMeUp,
 }) => {
-  const missedMinutes = Math.max(1, currentMinute - stoppedMinute);
+  const maxStoppedMinute = Math.max(1, currentMinute - 1);
+  const clampedStoppedMinute = Math.min(stoppedMinute, maxStoppedMinute);
+  const missedMinutes = Math.max(0, currentMinute - clampedStoppedMinute);
 
   const modeNames: Record<typeof mode, string> = {
     casual: "Casual Fan",
@@ -73,7 +75,7 @@ export const HeroConsole: React.FC<HeroConsoleProps> = ({
             id="missed-minutes-badge"
             className="text-sm font-mono font-extrabold text-pl-purple"
           >
-            {missedMinutes} missed minutes
+            {missedMinutes} missed {missedMinutes === 1 ? "minute" : "minutes"}
           </strong>
         </div>
       </div>
@@ -91,8 +93,8 @@ export const HeroConsole: React.FC<HeroConsoleProps> = ({
                 01. Stopped Watching At:
               </label>
               <span className="font-mono font-extrabold text-pl-purple text-sm bg-purple-100 px-2 py-0.5 rounded border border-purple-300">
-                <span id="stopped-minute-val">{stoppedMinute}&apos;</span> →{" "}
-                <span id="current-minute-val">{currentMinute}&apos;</span>
+                <span id="stopped-minute-val">{clampedStoppedMinute}&apos;</span>{" "}
+                → <span id="current-minute-val">{currentMinute}&apos;</span>
               </span>
             </div>
             <p className="text-[11px] text-slate-500 mb-3">
@@ -104,8 +106,9 @@ export const HeroConsole: React.FC<HeroConsoleProps> = ({
               id="stopped-minute-slider"
               type="range"
               min={1}
-              max={Math.max(2, currentMinute - 2)}
-              value={stoppedMinute}
+              max={maxStoppedMinute}
+              disabled={currentMinute <= 1}
+              value={clampedStoppedMinute}
               onChange={(e) =>
                 onChangeStoppedMinute(parseInt(e.target.value, 10))
               }
@@ -116,7 +119,9 @@ export const HeroConsole: React.FC<HeroConsoleProps> = ({
               <span>25&apos;</span>
               <span>45&apos; HT</span>
               <span>70&apos;</span>
-              <span>{currentMinute}&apos; LIVE</span>
+              <span>
+                {currentMinute}&apos; {currentMinute >= 90 ? "FT" : "LIVE"}
+              </span>
             </div>
           </div>
         </div>
@@ -270,8 +275,8 @@ export const HeroConsole: React.FC<HeroConsoleProps> = ({
           <BallIcon className="w-5 h-5 text-mint-bright shrink-0" />
           <span id="catch-btn-text">
             {isGenerating
-              ? `Generating Live Catch-Up (${stoppedMinute}' → ${currentMinute}')...`
-              : `Catch Me Up & Auto-Play Audio (${stoppedMinute}' → ${currentMinute}')`}
+              ? `Generating Live Catch-Up (${clampedStoppedMinute}' → ${currentMinute}')...`
+              : `Catch Me Up & Auto-Play Audio (${clampedStoppedMinute}' → ${currentMinute}')`}
           </span>
           <HeadphonesIcon className="w-5 h-5 text-mint-bright shrink-0" />
         </button>

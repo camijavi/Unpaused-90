@@ -7,6 +7,8 @@ import type {
   ExplainEventResponse,
   GeneratedInsight,
   MatchData,
+  PersonalizedSummaryRequest,
+  PersonalizedSummaryResponse,
   TimelineEvent,
 } from "../types/match";
 
@@ -56,10 +58,31 @@ async function fetchWithFallback(
     : new Error(`Network request failed for ${path}`);
 }
 
-export async function fetchMatchById(matchId = "PL2027-001"): Promise<MatchData> {
-  const res = await fetchWithFallback(`/api/v1/matches/${matchId}`);
+export async function fetchMatchById(
+  matchId = "PL2027-001",
+  minute?: number
+): Promise<MatchData> {
+  const query = minute !== undefined ? `?minute=${minute}` : "";
+  const res = await fetchWithFallback(`/api/v1/matches/${matchId}${query}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch match ${matchId}: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function resetMatchSimulation(
+  matchId = "PL2027-001",
+  startMinute?: number
+): Promise<MatchData> {
+  const query = startMinute !== undefined ? `?startMinute=${startMinute}` : "";
+  const res = await fetchWithFallback(
+    `/api/v1/matches/${matchId}/simulation/reset${query}`,
+    {
+      method: "POST",
+    }
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to reset match simulation ${matchId}: ${res.status}`);
   }
   return res.json();
 }
@@ -102,7 +125,22 @@ export async function generateCatchUp(
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
-    throw new Error(`Catch-up error (${res.status}): ${errText}`);
+    throw new Error(`Catch-Up error (${res.status}): ${errText}`);
+  }
+  return res.json();
+}
+
+export async function generatePersonalizedSummary(
+  payload: PersonalizedSummaryRequest
+): Promise<PersonalizedSummaryResponse> {
+  const res = await fetchWithFallback(`/api/v1/personalized-summary`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...payload, includeAudio: false }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`Summary error (${res.status}): ${errText}`);
   }
   return res.json();
 }

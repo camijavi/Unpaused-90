@@ -95,6 +95,27 @@ export interface CatchUpResponse {
   audioUrl?: string | null;
 }
 
+export interface PersonalizedSummaryRequest {
+  matchId: string;
+  mode: "casual" | "analyst" | "child";
+  favoriteTeam: string;
+  language: "en" | "es";
+  length: "1m" | "5m" | "full";
+  includeAudio?: boolean;
+}
+
+export interface PersonalizedSummaryResponse {
+  matchId: string;
+  mode: string;
+  favoriteTeam: string;
+  story: string;
+  length: string;
+  wordCount: number;
+  estimatedDurationSeconds: number;
+  voice: string;
+  audioUrl?: string | null;
+}
+
 export interface ExplainEventRequest {
   matchId: string;
   eventId: string;
