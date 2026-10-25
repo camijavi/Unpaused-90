@@ -22,6 +22,7 @@ interface CardsProps {
   catchUp: CatchUpResponse | null;
   isGenerating: boolean;
   statusBadgeText: string;
+  onClose: () => void;
 }
 
 export const Cards: React.FC<CardsProps> = ({
@@ -33,6 +34,7 @@ export const Cards: React.FC<CardsProps> = ({
   catchUp,
   isGenerating,
   statusBadgeText,
+  onClose,
 }) => {
   const windowStr = `${stoppedMinute}' – ${currentMinute}'`;
   const homeCode = match?.homeTeam.teamId ?? "ARS";
@@ -79,9 +81,21 @@ export const Cards: React.FC<CardsProps> = ({
             {statusBadgeText || `Synced to ${windowStr} Window`}
           </span>
         </div>
-        <span className="text-xs font-mono text-slate-500 hidden sm:inline">
-          4-Pillar Daylight Editorial Layout • Live Azure OpenAI Telemetry
-        </span>
+
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-mono text-slate-500 hidden sm:inline">
+            4-Pillar Daylight Editorial Layout • Live Azure OpenAI Telemetry
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close Live Catch-Up Intelligence Deck"
+            title="Close Live Catch-Up Deck"
+            className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-600 border border-slate-300 hover:border-red-300 flex items-center justify-center font-mono text-sm font-bold transition-colors cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       {/* Responsive Grid: 1 col mobile, 2 cols tablet, 4 cols desktop */}

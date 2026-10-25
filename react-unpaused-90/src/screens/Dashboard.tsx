@@ -148,6 +148,10 @@ export const Dashboard: React.FC = () => {
   const [length, setLength] = useState<"1m" | "5m" | "full">("1m");
   const [lang, setLang] = useState<"en" | "es">("en");
 
+  // Visibility state: Hidden by default until user clicks "Catch Me Up & Auto-Play Audio"
+  const [showCatchUpDeck, setShowCatchUpDeck] = useState<boolean>(false);
+  const [showAudioDock, setShowAudioDock] = useState<boolean>(false);
+
   // LiveCatchUp & Event Inspector state
   const [catchUp, setCatchUp] = useState<CatchUpResponse | null>(null);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -170,7 +174,7 @@ export const Dashboard: React.FC = () => {
   const [isSynthesizing, setIsSynthesizing] = useState<boolean>(false);
   const [speaker, setSpeaker] = useState<"Ollie" | "Ada">("Ollie");
   const [transcriptLine, setTranscriptLine] = useState<string>(
-    "Click 'Catch Me Up & Auto-Play Audio' to generate your live personalized match recap."
+    "Generating your live personalized match recap..."
   );
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(60);
@@ -315,6 +319,11 @@ export const Dashboard: React.FC = () => {
   const runCatchUp = useCallback(
     async (autoPlayAudio: boolean, unlockedByGesture = false) => {
       const myGenId = ++generationIdRef.current;
+
+      // Reveal both the Live Catch-Up Deck and the Audio Dock when triggered
+      setShowCatchUpDeck(true);
+      setShowAudioDock(true);
+
       if (unlockedByGesture) {
         unlockAudioElementOnGesture();
       } else if (autoPlayAudio) {
@@ -323,6 +332,7 @@ export const Dashboard: React.FC = () => {
 
       setIsGenerating(true);
       setStatusBadgeText("Generating Live AI Catch-Up...");
+      setTranscriptLine("Generating your live personalized match recap...");
 
       const activeMatchId = match?.matchId ?? "PL2027-001";
       const targetCurrentMin = match?.currentMinute ?? 90;
@@ -428,7 +438,7 @@ export const Dashboard: React.FC = () => {
     ]
   );
 
-  // Single guarded initialization on mount (prevents React StrictMode double-fire)
+  // Only load match metadata, timeline, and insights on mount (do NOT auto-generate catch-up or show cards/dock)
   useEffect(() => {
     if (hasInitializedRef.current) return;
     hasInitializedRef.current = true;
@@ -454,8 +464,7 @@ export const Dashboard: React.FC = () => {
     }
 
     loadInitialData();
-    runCatchUp(false, false);
-  }, [runCatchUp]);
+  }, []);
 
   // Handle "Pass Mic to Ada/Ollie" button in Audio Dock
   const handleSwitchSpeaker = async () => {
@@ -508,7 +517,6 @@ export const Dashboard: React.FC = () => {
       !currentBlobUrlRef.current ||
       audio.src === SILENT_UNLOCK_WAV
     ) {
-      // If no real audio blob is loaded yet, generate & auto-play now
       runCatchUp(true, true);
       return;
     }
@@ -533,6 +541,11 @@ export const Dashboard: React.FC = () => {
     if (audioRef.current) {
       audioRef.current.playbackRate = next;
     }
+  };
+
+  const handleCloseAudioDock = () => {
+    stopAndRevokeCurrentAudio();
+    setShowAudioDock(false);
   };
 
   return (
@@ -611,33 +624,39 @@ export const Dashboard: React.FC = () => {
             }}
           />
 
-          {/* 5. LiveCatchUp 4 Intelligence Cards */}
-          <Cards
-            match={match}
-            timeline={timeline}
-            insights={insights}
-            stoppedMinute={stoppedMinute}
-            currentMinute={currentMinute}
-            catchUp={catchUp}
-            isGenerating={isGenerating}
-            statusBadgeText={statusBadgeText}
-          />
+          {/* 5. LiveCatchUp 4 Intelligence Cards (Shown only after Catch Me Up is clicked, dismissible via X button) */}
+          {showCatchUpDeck && (
+            <Cards
+              match={match}
+              timeline={timeline}
+              insights={insights}
+              stoppedMinute={stoppedMinute}
+              currentMinute={currentMinute}
+              catchUp={catchUp}
+              isGenerating={isGenerating}
+              statusBadgeText={statusBadgeText}
+              onClose={() => setShowCatchUpDeck(false)}
+            />
+          )}
         </div>
       </main>
 
-      {/* 6. Auto-Play Audio Recap Player Dock */}
-      <AudioPlayerDock
-        isPlaying={isPlaying}
-        isSynthesizing={isSynthesizing}
-        speaker={speaker}
-        transcriptLine={transcriptLine}
-        currentTime={currentTime}
-        duration={duration}
-        playbackSpeed={playbackSpeed}
-        onTogglePlay={handleTogglePlay}
-        onSwitchSpeaker={handleSwitchSpeaker}
-        onCycleSpeed={handleCycleSpeed}
-      />
+      {/* 6. Auto-Play Audio Recap Player Dock (Shown only after Catch Me Up is clicked, dismissible via X button) */}
+      {showAudioDock && (
+        <AudioPlayerDock
+          isPlaying={isPlaying}
+          isSynthesizing={isSynthesizing}
+          speaker={speaker}
+          transcriptLine={transcriptLine}
+          currentTime={currentTime}
+          duration={duration}
+          playbackSpeed={playbackSpeed}
+          onTogglePlay={handleTogglePlay}
+          onSwitchSpeaker={handleSwitchSpeaker}
+          onCycleSpeed={handleCycleSpeed}
+          onClose={handleCloseAudioDock}
+        />
+      )}
 
       {/* Hidden HTML5 Audio Element for Blob Playback */}
       <audio

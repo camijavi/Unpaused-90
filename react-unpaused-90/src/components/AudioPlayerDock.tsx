@@ -12,6 +12,7 @@ interface AudioPlayerDockProps {
   onTogglePlay: () => void;
   onSwitchSpeaker: () => void;
   onCycleSpeed: () => void;
+  onClose: () => void;
 }
 
 function formatSeconds(sec: number): string {
@@ -34,6 +35,7 @@ export const AudioPlayerDock: React.FC<AudioPlayerDockProps> = ({
   onTogglePlay,
   onSwitchSpeaker,
   onCycleSpeed,
+  onClose,
 }) => {
   const progressPct =
     duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
@@ -110,8 +112,8 @@ export const AudioPlayerDock: React.FC<AudioPlayerDockProps> = ({
           </div>
         </div>
 
-        {/* Right: Animated Soundwave + Scrubber + Speed Control */}
-        <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">
+        {/* Right: Animated Soundwave + Scrubber + Speed Control + Close (X) Button */}
+        <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
           {/* Animated Equalizer Bars */}
           <div id="waveform-bars" className="flex items-end gap-1 h-6 px-2">
             {[
@@ -161,6 +163,16 @@ export const AudioPlayerDock: React.FC<AudioPlayerDockProps> = ({
             className="px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-300 text-xs font-mono font-bold text-pl-purple hover:border-pl-purple cursor-pointer"
           >
             {playbackSpeed.toFixed(2).replace(".00", ".0")}x
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close Audio Player Dock"
+            title="Close Audio Player"
+            className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-600 border border-slate-300 hover:border-red-300 flex items-center justify-center font-mono text-sm font-bold transition-colors cursor-pointer shrink-0"
+          >
+            ✕
           </button>
         </div>
       </div>

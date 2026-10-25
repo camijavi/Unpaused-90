@@ -49,7 +49,7 @@ export function formatTimelineEventTitle(
   ev: TimelineEvent,
   homeCode: string,
   homeName: string,
-  awayName: string
+  awayName: string,
 ): {
   clubName: string;
   playerLine: string;
@@ -148,15 +148,15 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
 
   // Derive real goal scorers and disciplinary notes from fetched timeline
   const homeGoals = timeline.filter(
-    (e) => e.team === homeCode && e.eventType === "Goal"
+    (e) => e.team === homeCode && e.eventType === "Goal",
   );
   const awayGoals = timeline.filter(
-    (e) => e.team === awayCode && e.eventType === "Goal"
+    (e) => e.team === awayCode && e.eventType === "Goal",
   );
   const awayCards = timeline.filter(
     (e) =>
       e.team === awayCode &&
-      (e.eventType === "YellowCard" || e.eventType === "RedCard")
+      (e.eventType === "YellowCard" || e.eventType === "RedCard"),
   );
 
   const homeScorersText =
@@ -184,7 +184,7 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
   const watchedPct = Math.min(100, Math.max(0, (stoppedMinute / 90) * 100));
   const missedPct = Math.min(
     100 - watchedPct,
-    Math.max(0, ((currentMinute - stoppedMinute) / 90) * 100)
+    Math.max(0, ((currentMinute - stoppedMinute) / 90) * 100),
   );
 
   // Active event for the inspector drawer
@@ -228,7 +228,7 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
           goalEv,
           homeCode,
           homeName,
-          awayName
+          awayName,
         );
         onTriggerAnimation({
           kind: "goal",
@@ -247,7 +247,7 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
           yellowEv,
           homeCode,
           homeName,
-          awayName
+          awayName,
         );
         onTriggerAnimation({
           kind: "yellow",
@@ -291,40 +291,6 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
           <span id="match-venue" className="text-slate-900 font-bold">
             {stadium}
           </span>
-        </div>
-
-        {/* Live Event Animation Trigger Bar (SVG Icons Only, No Emojis) */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 mr-1">
-            Test Broadcast FX:
-          </span>
-          <button
-            id="fx-btn-goal"
-            type="button"
-            onClick={() => handleQuickFx("goal")}
-            className="px-2.5 py-1 rounded-md bg-emerald-500 hover:bg-emerald-600 text-white font-mono font-extrabold text-[11px] shadow-sm transition-transform active:scale-95 flex items-center gap-1.5 cursor-pointer"
-          >
-            <BallIcon className="w-3.5 h-3.5" />
-            <span>Goal FX</span>
-          </button>
-          <button
-            id="fx-btn-yellow"
-            type="button"
-            onClick={() => handleQuickFx("yellow")}
-            className="px-2.5 py-1 rounded-md bg-amber-400 hover:bg-amber-500 text-slate-950 font-mono font-extrabold text-[11px] shadow-sm transition-transform active:scale-95 flex items-center gap-1.5 cursor-pointer"
-          >
-            <YellowCardIcon className="w-3 h-3.5" />
-            <span>Yellow Card FX</span>
-          </button>
-          <button
-            id="fx-btn-red"
-            type="button"
-            onClick={() => handleQuickFx("red")}
-            className="px-2.5 py-1 rounded-md bg-red-600 hover:bg-red-700 text-white font-mono font-extrabold text-[11px] shadow-sm transition-transform active:scale-95 flex items-center gap-1.5 cursor-pointer"
-          >
-            <RedCardIcon className="w-3 h-3.5" />
-            <span>Red Card FX</span>
-          </button>
         </div>
       </div>
 
@@ -604,16 +570,16 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
                 kind === "red"
                   ? "bg-red-600 text-white ring-red-300"
                   : kind === "yellow"
-                  ? "bg-amber-400 text-slate-950 ring-amber-200"
-                  : kind === "goal"
-                  ? "bg-emerald-600 text-white ring-emerald-300"
-                  : "bg-sky-600 text-white ring-sky-200";
+                    ? "bg-amber-400 text-slate-950 ring-amber-200"
+                    : kind === "goal"
+                      ? "bg-emerald-600 text-white ring-emerald-300"
+                      : "bg-sky-600 text-white ring-sky-200";
 
               const info = formatTimelineEventTitle(
                 ev,
                 homeCode,
                 homeName,
-                awayName
+                awayName,
               );
 
               return (
