@@ -2,19 +2,19 @@ import React from "react";
 
 export const Navbar: React.FC = () => {
   return (
-    <header className="sticky top-0 z-40 bg-black border-b border-slate-800 shadow-md">
+    <header className="sticky top-0 z-40 bg-gradient-to-r from-[#0F1420]/95 via-[#161D2F]/95 to-[#0F1420]/95 backdrop-blur-xl border-b border-white/10 shadow-[0_8px_30px_rgba(15,23,42,0.22)]">
       {/* Thin Premier League Top Accent Strip */}
       <div className="h-1.5 w-full bg-gradient-to-r from-pl-purple via-mint to-pl-crimson"></div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
         {/* Left: Sky MNF Slanted Bug (Brief C) Final Logo + Tagline */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3.5">
           <div className="flex items-center gap-2.5">
-            <div className="flex items-center bg-gradient-to-r from-pl-purple to-slate-900 px-3 py-1 rounded border border-mint/50 -skew-x-12 shadow-sm">
-              <span className="text-base font-display font-black tracking-wider text-white skew-x-12">
+            <div className="flex items-center bg-gradient-to-r from-pl-purple via-[#2A0838] to-slate-900 px-3.5 py-1.5 rounded-md border border-mint-bright/60 -skew-x-12 shadow-[0_0_20px_rgba(0,245,212,0.18)]">
+              <span className="text-lg font-display font-black tracking-wider text-white skew-x-12">
                 UNPAUSED
               </span>
-              <span className="text-base font-display font-black text-mint-bright ml-1.5 skew-x-12">
+              <span className="text-lg font-display font-black text-mint-bright ml-1.5 skew-x-12">
                 90
               </span>
               <svg
@@ -27,24 +27,24 @@ export const Navbar: React.FC = () => {
             </div>
           </div>
 
-          <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-slate-800">
-            <span className="px-2 py-0.5 rounded bg-pl-purple text-[10px] font-mono font-bold uppercase tracking-widest text-mint-bright">
+          <div className="hidden sm:flex items-center gap-2.5 pl-3.5 border-l border-white/15">
+            <span className="px-2.5 py-0.5 rounded bg-pl-purple/90 border border-mint/30 text-[10px] font-mono font-bold uppercase tracking-widest text-mint-bright">
               INSIDE THE GAME
             </span>
-            <span className="text-[11px] font-semibold text-slate-300 italic">
+            <span className="text-xs font-medium text-slate-300 italic">
               &ldquo;Never feel like you missed the match.&rdquo;
             </span>
           </div>
         </div>
 
         {/* Right: Constant Live Broadcast Telemetry Pill */}
-        <div className="flex items-center gap-2.5 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-700">
+        <div className="flex items-center gap-2.5 bg-white/[0.07] px-3.5 py-1.5 rounded-xl border border-white/15 backdrop-blur-md shadow-inner">
           <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-600 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600"></span>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
           </span>
           <span
-            className="text-xs font-mono font-extrabold tracking-wider text-white"
+            className="text-xs font-mono font-extrabold tracking-wider text-slate-100"
             id="header-live-clock"
           >
             LIVE • 60:14

@@ -50,7 +50,12 @@ export function formatTimelineEventTitle(
   homeCode: string,
   homeName: string,
   awayName: string
-): { clubName: string; playerLine: string; title: string; fallbackDesc: string } {
+): {
+  clubName: string;
+  playerLine: string;
+  title: string;
+  fallbackDesc: string;
+} {
   const clubName = ev.team === homeCode ? homeName : awayName;
   if (ev.eventType === "Goal") {
     const assistText = ev.assist ? ` (Assist: ${ev.assist})` : "";
@@ -86,7 +91,9 @@ export function formatTimelineEventTitle(
   if (ev.eventType === "Substitution") {
     return {
       clubName: clubName.toUpperCase(),
-      playerLine: `${ev.playerIn ?? "Sub"} IN • ${ev.playerOut ?? "Sub"} OUT (${ev.minute}')`,
+      playerLine: `${ev.playerIn ?? "Sub"} IN • ${ev.playerOut ?? "Sub"} OUT (${
+        ev.minute
+      }')`,
       title: `Tactical Substitution (${ev.minute}'): ${ev.playerIn} replaces ${ev.playerOut}`,
       fallbackDesc: `Fresh legs introduced by ${clubName} at ${ev.minute}' as ${ev.playerIn} comes on for ${ev.playerOut}.`,
     };
@@ -324,7 +331,9 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
       {/* HERO SCORE CONTAINER WITH PANORAMIC NEUTRAL STADIUM BACKGROUND IMAGE */}
       <div
         id="stadium-score-hero"
-        className={`relative overflow-hidden ${isShaking ? "anim-shake" : ""}`}
+        className={`relative overflow-hidden min-h-[300px] sm:min-h-[340px] lg:min-h-[380px] flex flex-col justify-center ${
+          isShaking ? "anim-shake" : ""
+        }`}
       >
         {/* Neutral Stadium Photograph Layer */}
         <img
@@ -333,14 +342,14 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
           className="absolute inset-0 w-full h-full object-cover object-center scale-105 transition-transform duration-1000"
         />
         {/* Multi-stop Broadcast Contrast Scrim so team names & crests pop */}
-        <div className="absolute inset-0 bg-gradient-to-r from-slate-950/85 via-slate-900/60 to-slate-950/85"></div>
+        <div className="absolute inset-0 bg-gradient-to-r from-slate-950/85 via-slate-900/55 to-slate-950/85"></div>
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-transparent to-slate-950/40"></div>
 
         {/* ANIMATED BROADCAST EVENT OVERLAY STAGE (SEPARATE COMPONENT FILES) */}
         {activeAnimation && (
           <div
             id="event-fx-overlay"
-            className={`absolute inset-0 z-30 flex flex-col items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md transition-opacity ${
+            className={`absolute inset-0 z-30 flex flex-col items-center justify-center p-6 sm:p-8 bg-slate-950/80 backdrop-blur-md transition-opacity ${
               activeAnimation.kind === "red" ? "anim-red-pulse" : ""
             }`}
           >
@@ -380,13 +389,13 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
         )}
 
         {/* Scoreboard Content Over Stadium Image */}
-        <div className="relative z-10 p-5 sm:p-8 lg:px-10">
-          <div className="grid grid-cols-1 lg:grid-cols-11 gap-6 items-center">
+        <div className="relative z-10 py-10 sm:py-12 px-6 sm:px-10 lg:px-14 w-full">
+          <div className="grid grid-cols-1 lg:grid-cols-11 gap-8 items-center">
             {/* HOME CLUB (4 cols) */}
-            <div className="lg:col-span-4 flex items-center justify-between sm:justify-start gap-4">
+            <div className="lg:col-span-4 flex items-center justify-between sm:justify-start gap-5">
               <div
                 id="home-crest-svg"
-                className="w-16 h-16 sm:w-20 sm:h-20 shrink-0 drop-shadow-[0_10px_20px_rgba(0,0,0,0.65)] transition-transform hover:scale-105"
+                className="w-20 h-20 sm:w-24 sm:h-24 shrink-0 drop-shadow-[0_12px_24px_rgba(0,0,0,0.7)] transition-transform hover:scale-105"
               >
                 <ArsenalCrest />
               </div>
@@ -394,30 +403,31 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
                 <div className="flex items-center gap-2">
                   <span
                     id="home-crest-code"
-                    className="text-xs font-mono font-extrabold px-2 py-0.5 rounded bg-red-600 text-white shadow"
+                    className="text-xs font-mono font-extrabold px-2.5 py-0.5 rounded bg-red-600 text-white shadow"
                   >
                     {homeCode}
                   </span>
                   <span
                     id="home-formation"
-                    className="text-xs font-mono px-2 py-0.5 rounded bg-white/20 backdrop-blur-md text-white border border-white/25"
+                    className="text-xs font-mono px-2.5 py-0.5 rounded bg-white/20 backdrop-blur-md text-white border border-white/25"
                   >
                     {homeFormation}
                   </span>
                 </div>
                 <h1
                   id="home-team-name"
-                  className="text-2xl sm:text-4xl font-display font-black uppercase tracking-wide text-white mt-0.5 drop-shadow"
+                  className="text-3xl sm:text-5xl font-display font-black uppercase tracking-wide text-white mt-1 drop-shadow-md"
                 >
                   {homeName}
                 </h1>
                 <p
                   id="home-scorers"
-                  className="text-xs font-mono text-emerald-300 font-semibold mt-0.5 drop-shadow flex items-center gap-1.5 flex-wrap"
+                  className="text-xs sm:text-sm font-mono text-emerald-300 font-semibold mt-1 drop-shadow flex items-center gap-1.5 flex-wrap"
                 >
                   <BallIcon className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
                   <span>
-                    {homeScorersText} • Shots: {match?.statistics.shots.home ?? 14} (
+                    {homeScorersText} • Shots:{" "}
+                    {match?.statistics.shots.home ?? 14} (
                     {match?.statistics.shotsOnTarget.home ?? 6} OT)
                   </span>
                 </p>
@@ -426,65 +436,65 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
 
             {/* CENTER BROADCAST SCOREBUG (3 cols) */}
             <div className="lg:col-span-3 flex flex-col items-center justify-center">
-              <div className="flex items-center gap-3 sm:gap-5 bg-white/95 backdrop-blur-xl px-6 py-3.5 rounded-2xl border-2 border-white shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+              <div className="flex items-center gap-4 sm:gap-6 bg-white/95 backdrop-blur-xl px-7 sm:px-8 py-4 sm:py-5 rounded-2xl border-2 border-white shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
                 <span
                   id="home-score"
-                  className="text-4xl sm:text-5xl font-display font-black text-slate-900"
+                  className="text-5xl sm:text-6xl font-display font-black text-slate-900 leading-none"
                 >
                   {homeScore}
                 </span>
                 <div className="flex flex-col items-center">
                   <span
-                    className="px-3 py-1 rounded-md bg-pl-purple text-mint-bright font-mono text-sm sm:text-base font-extrabold tracking-tight shadow"
+                    className="px-3.5 py-1 rounded-md bg-pl-purple text-mint-bright font-mono text-base sm:text-lg font-extrabold tracking-tight shadow"
                     id="scoreboard-minute"
                   >
                     {currentMinute}&apos;
                   </span>
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-slate-500 mt-1">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-slate-500 mt-1.5">
                     2ND HALF
                   </span>
                 </div>
                 <span
                   id="away-score"
-                  className="text-4xl sm:text-5xl font-display font-black text-slate-900"
+                  className="text-5xl sm:text-6xl font-display font-black text-slate-900 leading-none"
                 >
                   {awayScore}
                 </span>
               </div>
               <span
                 id="match-possession"
-                className="mt-2 px-3 py-0.5 rounded-full bg-slate-900/80 backdrop-blur-md border border-white/20 text-[11px] font-mono font-bold text-white"
+                className="mt-3 px-3.5 py-1 rounded-full bg-slate-900/85 backdrop-blur-md border border-white/20 text-xs font-mono font-bold text-white shadow"
               >
                 POSSESSION: {possessionHome}% – {possessionAway}%
               </span>
             </div>
 
             {/* AWAY CLUB (4 cols) */}
-            <div className="lg:col-span-4 flex items-center justify-between sm:justify-end gap-4 text-left sm:text-right">
+            <div className="lg:col-span-4 flex items-center justify-between sm:justify-end gap-5 text-left sm:text-right">
               <div className="order-2 sm:order-1">
                 <div className="flex items-center sm:justify-end gap-2">
                   <span
                     id="away-formation"
-                    className="text-xs font-mono px-2 py-0.5 rounded bg-white/20 backdrop-blur-md text-white border border-white/25"
+                    className="text-xs font-mono px-2.5 py-0.5 rounded bg-white/20 backdrop-blur-md text-white border border-white/25"
                   >
                     {awayFormation}
                   </span>
                   <span
                     id="away-crest-code"
-                    className="text-xs font-mono font-extrabold px-2 py-0.5 rounded bg-rose-600 text-white shadow"
+                    className="text-xs font-mono font-extrabold px-2.5 py-0.5 rounded bg-rose-600 text-white shadow"
                   >
                     {awayCode}
                   </span>
                 </div>
                 <h2
                   id="away-team-name"
-                  className="text-2xl sm:text-4xl font-display font-black uppercase tracking-wide text-white mt-0.5 drop-shadow"
+                  className="text-3xl sm:text-5xl font-display font-black uppercase tracking-wide text-white mt-1 drop-shadow-md"
                 >
                   {awayName}
                 </h2>
                 <p
                   id="away-scorers"
-                  className="text-xs font-mono text-emerald-300 font-semibold mt-0.5 drop-shadow flex items-center sm:justify-end gap-1.5 flex-wrap"
+                  className="text-xs sm:text-sm font-mono text-emerald-300 font-semibold mt-1 drop-shadow flex items-center sm:justify-end gap-1.5 flex-wrap"
                 >
                   <BallIcon className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
                   <span>{awayScorersText}</span>
@@ -499,7 +509,7 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
               </div>
               <div
                 id="away-crest-svg"
-                className="order-1 sm:order-2 w-16 h-16 sm:w-20 sm:h-20 shrink-0 drop-shadow-[0_10px_20px_rgba(0,0,0,0.65)] transition-transform hover:scale-105"
+                className="order-1 sm:order-2 w-20 h-20 sm:w-24 sm:h-24 shrink-0 drop-shadow-[0_12px_24px_rgba(0,0,0,0.7)] transition-transform hover:scale-105"
               >
                 <LiverpoolCrest />
               </div>
@@ -656,7 +666,9 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
               {activeEv ? (
                 <>
                   {mapEventTypeToAnimationKind(activeEv.eventType) ===
-                    "goal" && <BallIcon className="w-3.5 h-3.5 text-mint-bright" />}
+                    "goal" && (
+                    <BallIcon className="w-3.5 h-3.5 text-mint-bright" />
+                  )}
                   {mapEventTypeToAnimationKind(activeEv.eventType) ===
                     "yellow" && <YellowCardIcon className="w-3 h-3.5" />}
                   {mapEventTypeToAnimationKind(activeEv.eventType) ===
