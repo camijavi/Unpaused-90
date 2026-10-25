@@ -23,6 +23,11 @@ import type {
   TimelineEvent,
 } from "../types/match";
 
+// Tiny 1-sample silent WAV used to synchronously unlock the HTML5 <audio> element on user click
+// so browser autoplay policy never blocks playback after async Azure OpenAI + Speech calls complete.
+const SILENT_UNLOCK_WAV =
+  "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+
 const FALLBACK_MATCH: MatchData = {
   matchId: "PL2027-001",
   competition: "Premier League",
@@ -179,14 +184,12 @@ export const Dashboard: React.FC = () => {
 
   const currentMinute = match?.currentMinute ?? 90;
 
-  // Flush and reset any playing audio so an old audio stream can never replay
-  const resetAudioPlayer = useCallback(() => {
+  // Stops any currently playing audio and revokes old Blob URLs so stale audio never replays
+  const stopAndRevokeCurrentAudio = useCallback(() => {
     const audio = audioRef.current;
     if (audio) {
       audio.pause();
       audio.currentTime = 0;
-      audio.removeAttribute("src");
-      audio.load();
     }
     if (currentBlobUrlRef.current) {
       URL.revokeObjectURL(currentBlobUrlRef.current);
@@ -196,10 +199,28 @@ export const Dashboard: React.FC = () => {
     setCurrentTime(0);
   }, []);
 
-  // Convert base64 MP3 data URI into a fresh Blob URL and auto-play
+  // Synchronously unlocks the <audio> element during a user click gesture
+  const unlockAudioElementOnGesture = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    stopAndRevokeCurrentAudio();
+    audio.src = SILENT_UNLOCK_WAV;
+    audio
+      .play()
+      .then(() => {
+        audio.pause();
+        audio.currentTime = 0;
+      })
+      .catch((err) => {
+        console.debug("Audio gesture unlock note:", err);
+      });
+  }, [stopAndRevokeCurrentAudio]);
+
+  // Converts base64 MP3 data URI into a fresh Blob URL and auto-plays it
   const playFreshAudioDataUrl = useCallback(
     (dataUrl: string) => {
-      resetAudioPlayer();
+      stopAndRevokeCurrentAudio();
+
       const base64Index = dataUrl.indexOf("base64,");
       const base64 =
         base64Index !== -1 ? dataUrl.substring(base64Index + 7) : dataUrl;
@@ -216,13 +237,24 @@ export const Dashboard: React.FC = () => {
       if (audio) {
         audio.src = blobUrl;
         audio.playbackRate = playbackSpeed;
-        audio
-          .play()
-          .then(() => setIsPlaying(true))
-          .catch(() => setIsPlaying(false));
+        audio.load();
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              setIsPlaying(true);
+            })
+            .catch((err) => {
+              console.warn(
+                "Autoplay blocked by browser until user clicks Play:",
+                err
+              );
+              setIsPlaying(false);
+            });
+        }
       }
     },
-    [playbackSpeed, resetAudioPlayer]
+    [playbackSpeed, stopAndRevokeCurrentAudio]
   );
 
   // Trigger a broadcast event animation overlay for 2.5s
@@ -273,20 +305,24 @@ export const Dashboard: React.FC = () => {
           explanation: res.explanation,
           loading: false,
         });
-      } catch {
+      } catch (err) {
+        console.error("Failed to explain timeline event:", err);
         setEventExplanation(null);
       }
     },
     [bias, lang, match, mode]
   );
 
-  // Generate Catch-Up intelligence cards + optionally synthesize & auto-play TTS audio
+  // Generate Catch-Up intelligence cards + synthesize & auto-play TTS audio
   const runCatchUp = useCallback(
-    async (autoPlayAudio: boolean) => {
+    async (autoPlayAudio: boolean, unlockedByGesture = false) => {
       const myGenId = ++generationIdRef.current;
-      if (autoPlayAudio) {
-        resetAudioPlayer();
+      if (unlockedByGesture) {
+        unlockAudioElementOnGesture();
+      } else if (autoPlayAudio) {
+        stopAndRevokeCurrentAudio();
       }
+
       setIsGenerating(true);
       setStatusBadgeText("Generating Live AI Catch-Up...");
 
@@ -333,9 +369,10 @@ export const Dashboard: React.FC = () => {
           setTranscriptLine(res.whatHappened);
         }
 
-        // Step 2: Synthesize & auto-play audio if requested
+        // Step 2: Synthesize & auto-play audio
         if (autoPlayAudio && narrationScript) {
           setIsSynthesizing(true);
+          setStatusBadgeText("Synthesizing British AI Audio...");
           const audioRes = await synthesizeAudio({
             text: narrationScript,
             voice: res.voice ?? null,
@@ -344,6 +381,9 @@ export const Dashboard: React.FC = () => {
 
           if (myGenId !== generationIdRef.current) return;
           setIsSynthesizing(false);
+          setStatusBadgeText(
+            `Synced to ${stoppedMinute}'–${targetCurrentMin}' Window`
+          );
 
           if (audioRes.voice) {
             setSpeaker(
@@ -354,12 +394,14 @@ export const Dashboard: React.FC = () => {
             playFreshAudioDataUrl(audioRes.audioUrl);
           }
         }
-      } catch {
+      } catch (err) {
+        console.error("Error in runCatchUp / synthesizeAudio:", err);
         if (myGenId === generationIdRef.current) {
           setIsGenerating(false);
           setIsSynthesizing(false);
-          setStatusBadgeText(
-            `Synced to ${stoppedMinute}'–${targetCurrentMin}' Window`
+          setStatusBadgeText("Backend Offline — Check localhost:5165");
+          setTranscriptLine(
+            "Could not reach .NET backend at http://localhost:5165. Make sure 'dotnet run --project NETUnpaused90' is running."
           );
         }
       }
@@ -371,12 +413,13 @@ export const Dashboard: React.FC = () => {
       match,
       mode,
       playFreshAudioDataUrl,
-      resetAudioPlayer,
+      stopAndRevokeCurrentAudio,
       stoppedMinute,
+      unlockAudioElementOnGesture,
     ]
   );
 
-  // Initial fetch of match data, timeline, insights, and initial text catch-up
+  // Initial fetch of match data, timeline, and insights
   useEffect(() => {
     let cancelled = false;
     async function loadInitialData() {
@@ -395,8 +438,8 @@ export const Dashboard: React.FC = () => {
           timelineData[0] ??
           null;
         setSelectedEvent(defaultEv);
-      } catch {
-        // Fallback match data is already loaded in state
+      } catch (err) {
+        console.error("Failed to load initial match data from backend:", err);
       }
     }
     loadInitialData();
@@ -405,9 +448,9 @@ export const Dashboard: React.FC = () => {
     };
   }, []);
 
-  // Trigger initial text catch-up on mount so the 4 cards show real backend data immediately
+  // Trigger initial text + audio catch-up on mount
   useEffect(() => {
-    runCatchUp(false);
+    runCatchUp(true, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -434,7 +477,7 @@ export const Dashboard: React.FC = () => {
     if (!narrationScript) return;
 
     const myGenId = ++generationIdRef.current;
-    resetAudioPlayer();
+    unlockAudioElementOnGesture();
     setIsSynthesizing(true);
     try {
       const audioRes = await synthesizeAudio({
@@ -447,7 +490,8 @@ export const Dashboard: React.FC = () => {
       if (audioRes.audioUrl) {
         playFreshAudioDataUrl(audioRes.audioUrl);
       }
-    } catch {
+    } catch (err) {
+      console.error("Failed to switch speaker audio:", err);
       if (myGenId === generationIdRef.current) {
         setIsSynthesizing(false);
       }
@@ -456,16 +500,23 @@ export const Dashboard: React.FC = () => {
 
   const handleTogglePlay = () => {
     const audio = audioRef.current;
-    if (!audio || !audio.src) {
-      // If no audio has been synthesized yet, synthesize and play now
-      runCatchUp(true);
+    if (
+      !audio ||
+      !currentBlobUrlRef.current ||
+      audio.src === SILENT_UNLOCK_WAV
+    ) {
+      // If no real audio blob is loaded yet, generate & auto-play now
+      runCatchUp(true, true);
       return;
     }
     if (audio.paused) {
       audio
         .play()
         .then(() => setIsPlaying(true))
-        .catch(() => setIsPlaying(false));
+        .catch((err) => {
+          console.error("Audio play failed:", err);
+          setIsPlaying(false);
+        });
     } else {
       audio.pause();
       setIsPlaying(false);
@@ -493,7 +544,7 @@ export const Dashboard: React.FC = () => {
         className="fixed top-1/3 -right-36 w-[28rem] h-[28rem] rounded-full bg-teal-300/35 blur-3xl pointer-events-none transition-all duration-700"
       ></div>
 
-      {/* 1. Black Broadcast Navbar with Sky MNF Slanted Bug (Brief C) */}
+      {/* 1. Midnight Obsidian Broadcast Navbar with Sky MNF Slanted Bug (Brief C) */}
       <Navbar />
 
       {/* Main Container */}
@@ -524,7 +575,7 @@ export const Dashboard: React.FC = () => {
             bias={bias}
             length={length}
             lang={lang}
-            isGenerating={isGenerating}
+            isGenerating={isGenerating || isSynthesizing}
             onChangeStoppedMinute={setStoppedMinute}
             onChangeMode={setMode}
             onChangeBias={setBias}
@@ -553,7 +604,7 @@ export const Dashboard: React.FC = () => {
                   sub: info.title,
                 });
               }
-              runCatchUp(true);
+              runCatchUp(true, true);
             }}
           />
 
@@ -589,16 +640,28 @@ export const Dashboard: React.FC = () => {
       <audio
         ref={audioRef}
         onTimeUpdate={() => {
-          if (audioRef.current) {
+          if (
+            audioRef.current &&
+            audioRef.current.src !== SILENT_UNLOCK_WAV
+          ) {
             setCurrentTime(audioRef.current.currentTime);
           }
         }}
         onLoadedMetadata={() => {
-          if (audioRef.current && Number.isFinite(audioRef.current.duration)) {
+          if (
+            audioRef.current &&
+            audioRef.current.src !== SILENT_UNLOCK_WAV &&
+            Number.isFinite(audioRef.current.duration) &&
+            audioRef.current.duration > 0.5
+          ) {
             setDuration(audioRef.current.duration);
           }
         }}
-        onPlay={() => setIsPlaying(true)}
+        onPlay={() => {
+          if (audioRef.current?.src !== SILENT_UNLOCK_WAV) {
+            setIsPlaying(true);
+          }
+        }}
         onPause={() => setIsPlaying(false)}
         onEnded={() => setIsPlaying(false)}
         className="hidden"

@@ -53,7 +53,8 @@ export async function generateCatchUp(
     body: JSON.stringify({ ...payload, includeAudio: false }),
   });
   if (!res.ok) {
-    throw new Error(`Catch-up generation failed: ${res.status}`);
+    const errText = await res.text().catch(() => "");
+    throw new Error(`Catch-up generation failed (${res.status}): ${errText}`);
   }
   return res.json();
 }
@@ -67,7 +68,8 @@ export async function explainTimelineEvent(
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    throw new Error(`Event explanation failed: ${res.status}`);
+    const errText = await res.text().catch(() => "");
+    throw new Error(`Event explanation failed (${res.status}): ${errText}`);
   }
   return res.json();
 }
@@ -81,7 +83,8 @@ export async function synthesizeAudio(
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    throw new Error(`Audio synthesis failed: ${res.status}`);
+    const errText = await res.text().catch(() => "");
+    throw new Error(`Audio synthesis failed (${res.status}): ${errText}`);
   }
   return res.json();
 }
