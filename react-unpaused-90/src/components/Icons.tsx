@@ -249,24 +249,21 @@ export const ArsenalCrest: React.FC<IconProps> = ({
   className = "w-full h-full",
 }) => (
   <svg viewBox="0 0 80 80" className={className} aria-label="Arsenal Crest">
-    <defs>
-      <linearGradient id="arsGrad" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stopColor="#EF4444" />
-        <stop offset="100%" stopColor="#991B1B" />
-      </linearGradient>
-    </defs>
+    {/* Shield Base in iconic Arsenal Red */}
     <path
       d="M12 10 H68 V38 C68 58 40 72 40 72 C40 72 12 58 12 38 Z"
-      fill="url(#arsGrad)"
+      fill="#DC2626"
       stroke="#FBBF24"
       strokeWidth="3.5"
     />
+    {/* Inner Shield in Rich Crimson Red with Navy Trim */}
     <path
       d="M17 15 H63 V37 C63 53 40 65 40 65 C40 65 17 53 17 37 Z"
-      fill="none"
+      fill="#B91C1C"
       stroke="#1E3A8A"
       strokeWidth="2"
     />
+    {/* Golden Cannon Barrel */}
     <rect
       x="22"
       y="36"
@@ -276,6 +273,7 @@ export const ArsenalCrest: React.FC<IconProps> = ({
       transform="rotate(-14 39 39)"
       fill="#FBBF24"
     />
+    {/* Cannon Wheel */}
     <circle
       cx="33"
       cy="45"
@@ -285,6 +283,7 @@ export const ArsenalCrest: React.FC<IconProps> = ({
       strokeWidth="2.5"
     />
     <circle cx="33" cy="45" r="2" fill="#FBBF24" />
+    {/* Club Name */}
     <text
       x="40"
       y="26"
@@ -304,23 +303,25 @@ export const LiverpoolCrest: React.FC<IconProps> = ({
   className = "w-full h-full",
 }) => (
   <svg viewBox="0 0 80 80" className={className} aria-label="Liverpool Crest">
-    <defs>
-      <linearGradient id="livGrad" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stopColor="#E11D48" />
-        <stop offset="100%" stopColor="#881337" />
-      </linearGradient>
-    </defs>
+    {/* Shield Base in iconic Liverpool Crimson Red */}
     <path
       d="M14 14 Q40 6 66 14 V40 C66 59 40 72 40 72 C40 72 14 59 14 40 Z"
-      fill="url(#livGrad)"
+      fill="#DC2626"
       stroke="#FBBF24"
       strokeWidth="3"
     />
+    {/* Inner Shield in Darker Red Highlight */}
+    <path
+      d="M18 18 Q40 12 62 18 V39 C62 55 40 66 40 66 C40 66 18 55 18 39 Z"
+      fill="#991B1B"
+    />
+    {/* Liverbird in Golden Amber */}
     <path
       d="M40 22 C33 26 26 32 28 42 C32 40 36 41 40 48 C44 41 48 40 52 42 C54 32 47 26 40 22 Z"
       fill="#FBBF24"
     />
     <circle cx="40" cy="20" r="3" fill="#FBBF24" />
+    {/* Club Initials */}
     <text
       x="40"
       y="61"

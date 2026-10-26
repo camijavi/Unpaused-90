@@ -12,10 +12,10 @@ import type {
   TimelineEvent,
 } from "../types/match";
 import {
-  ArsenalCrest,
+
   BallIcon,
   FilterIcon,
-  LiverpoolCrest,
+
   RedCardIcon,
   SubIcon,
   TargetIcon,
@@ -23,6 +23,7 @@ import {
   YellowCardIcon,
 } from "./Icons";
 import { useLanguage } from "../languages/LanguageContext";
+import ResponsiveScoreContainer, { renderTeamCrest } from "./ResponsiveScoreContainer";
 
 interface ScoreContainerProps {
   match: MatchData | null;
@@ -496,10 +497,10 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
       ></div>
 
       {/* Top Broadcast Metadata Telemetry Bar */}
-      <div className="px-4 sm:px-6 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-slate-600">
+      <div className="hidden md:flex px-4 sm:px-6 py-2.5 bg-slate-50 border-b border-slate-200 flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-slate-600">
         <div className="flex items-center gap-2">
           <span className="text-pl-purple font-extrabold uppercase">
-            {competition} • {season}
+            {competition} • WEEK 10 • {season}
           </span>
           <span>•</span>
           <span id="match-venue" className="text-slate-900 font-bold">
@@ -536,10 +537,23 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
         </div>
       </div>
 
+      {/* MOBILE / SMALL SCREENS HERO (< md): Responsive Score Container */}
+      <div className="md:hidden">
+        <ResponsiveScoreContainer
+          match={match}
+          currentMinute={currentMinute}
+          stoppedMinute={stoppedMinute}
+          timeline={timeline}
+          activeAnimation={activeAnimation}
+          onTriggerAnimation={onTriggerAnimation}
+          onSelectTimelineEvent={onSelectTimelineEvent}
+        />
+      </div>
+
       {/* HERO SCORE CONTAINER WITH PANORAMIC NEUTRAL STADIUM BACKGROUND IMAGE */}
       <div
         id="stadium-score-hero"
-        className={`relative overflow-hidden min-h-[300px] sm:min-h-[340px] lg:min-h-[380px] flex flex-col justify-center ${
+        className={`hidden md:flex relative overflow-hidden min-h-[300px] sm:min-h-[340px] lg:min-h-[380px] flex-col justify-center ${
           isShaking ? "anim-shake" : ""
         }`}
       >
@@ -605,7 +619,7 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
                 id="home-crest-svg"
                 className="w-20 h-20 sm:w-24 sm:h-24 shrink-0 drop-shadow-[0_12px_24px_rgba(0,0,0,0.7)] transition-transform hover:scale-105"
               >
-                <ArsenalCrest />
+                {renderTeamCrest(homeCode, homeName, "w-full h-full")}
               </div>
               <div>
                 <div className="flex items-center gap-2">
@@ -644,6 +658,15 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
 
             {/* CENTER BROADCAST SCOREBUG (3 cols) */}
             <div className="lg:col-span-3 flex flex-col items-center justify-center">
+              {/* Competition & Matchweek Header (Matching Mobile UI) */}
+              <div className="flex flex-col items-center justify-center text-center mb-3">
+                <h2 className="text-xs sm:text-sm font-semibold tracking-wide text-purple-100/90 font-display">
+                  {competition}
+                </h2>
+                <span className="text-[11px] font-semibold tracking-widest text-purple-300/80 mt-0.5 uppercase">
+                  WEEK 10
+                </span>
+              </div>
               <div className="flex items-center gap-4 sm:gap-6 bg-white/95 backdrop-blur-xl px-7 sm:px-8 py-4 sm:py-5 rounded-2xl border-2 border-white shadow-[0_24px_60px_rgba(0,0,0,0.55)]">
                 <span
                   id="home-score"
@@ -738,7 +761,7 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
                 id="away-crest-svg"
                 className="order-1 sm:order-2 w-20 h-20 sm:w-24 sm:h-24 shrink-0 drop-shadow-[0_12px_24px_rgba(0,0,0,0.7)] transition-transform hover:scale-105"
               >
-                <LiverpoolCrest />
+                {renderTeamCrest(awayCode, awayName, "w-full h-full")}
               </div>
             </div>
           </div>
