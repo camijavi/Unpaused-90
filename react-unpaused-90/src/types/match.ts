@@ -93,6 +93,8 @@ export interface CatchUpResponse {
   estimatedDurationSeconds?: number | null;
   voice?: string | null;
   audioUrl?: string | null;
+  currentMinute?: number | null;
+  lastViewedMinute?: number | null;
 }
 
 export interface PersonalizedSummaryRequest {
