@@ -14,6 +14,8 @@ public static class AudioEndpoints
         group.MapPost("/audio", async (
             AudioRequest request,
             SpeechService speechService,
+            IConfiguration configuration,
+            ILoggerFactory loggerFactory,
             CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(request.Text))
@@ -27,17 +29,25 @@ public static class AudioEndpoints
 
             try
             {
-                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                // Neural TTS for a full multi-paragraph recap (especially Spanish, which is ~25% longer) routinely
+                // takes several seconds. A short timeout silently forced the robotic browser voice fallback.
+                using var timeoutCts = new CancellationTokenSource(GetSynthesisTimeout(configuration));
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
                 var response = await speechService.GenerateAudioUrlAsync(request, linkedCts.Token);
                 return Results.Ok(response);
             }
-            catch
+            catch (Exception ex) when (!ct.IsCancellationRequested)
             {
-                // Graceful fallback response: return 200 OK with AudioUrl = null so client uses native speech without 500 errors
+                loggerFactory.CreateLogger("AudioEndpoints").LogWarning(
+                    ex,
+                    "Azure neural speech synthesis failed ({Language}); client will fall back to native speech.",
+                    isSpanish ? "es" : "en");
+
+                // Graceful fallback response: return 200 OK with AudioUrl = null so client uses native speech without 500 errors.
+                // Keep the persona voice (Ollie/Ada) so the UI highlights the correct co-host.
                 return Results.Ok(new AudioResponse(
                     AudioUrl: null,
-                    Voice: request.Voice ?? (isSpanish ? "es-MX-DaliaNeural" : "en-GB-OllieMultilingualNeural"),
+                    Voice: request.Voice ?? "en-GB-OllieMultilingualNeural",
                     Language: isSpanish ? "es" : "en"
                 ));
             }
@@ -48,6 +58,7 @@ public static class AudioEndpoints
         group.MapPost("/audio/stream", async (
             AudioRequest request,
             SpeechService speechService,
+            IConfiguration configuration,
             CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(request.Text))
@@ -57,7 +68,7 @@ public static class AudioEndpoints
 
             try
             {
-                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                using var timeoutCts = new CancellationTokenSource(GetSynthesisTimeout(configuration));
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
                 var (audioBytes, _, _) = await speechService.SynthesizeSpeechBytesAsync(request, linkedCts.Token);
                 return Results.File(audioBytes, "audio/mpeg", "unpaused90-recap.mp3");
@@ -68,5 +79,11 @@ public static class AudioEndpoints
             }
         })
         .WithName("GenerateAudioStream");
+    }
+
+    private static TimeSpan GetSynthesisTimeout(IConfiguration configuration)
+    {
+        var seconds = configuration.GetValue<double?>("AzureSpeech:TimeoutSeconds") ?? 30;
+        return TimeSpan.FromSeconds(Math.Clamp(seconds, 5, 120));
     }
 }

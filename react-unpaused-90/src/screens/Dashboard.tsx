@@ -31,6 +31,17 @@ import type {
 const SILENT_UNLOCK_WAV =
   "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
 
+// Maps any backend/native voice name to the co-host persona shown in the Audio Dock
+const FEMALE_VOICE_HINTS = ["ada", "dalia", "elvira", "sabina", "helena", "paulina", "monica", "female"];
+function speakerFromVoice(
+  voice: string | null | undefined,
+  fallback: "Ollie" | "Ada" = "Ollie"
+): "Ollie" | "Ada" {
+  if (!voice) return fallback;
+  const v = voice.toLowerCase();
+  return FEMALE_VOICE_HINTS.some((hint) => v.includes(hint)) ? "Ada" : "Ollie";
+}
+
 const FALLBACK_MATCH: MatchData = {
   matchId: "PL2027-001",
   competition: "Premier League",
@@ -190,6 +201,10 @@ export const Dashboard: React.FC = () => {
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [isSynthesizing, setIsSynthesizing] = useState<boolean>(false);
   const [speaker, setSpeaker] = useState<"Ollie" | "Ada">("Ollie");
+  const speakerRef = useRef<"Ollie" | "Ada">("Ollie");
+  useEffect(() => {
+    speakerRef.current = speaker;
+  }, [speaker]);
   const [transcriptLine, setTranscriptLine] = useState<string>(
     "Generating your live personalized match recap..."
   );
@@ -201,6 +216,13 @@ export const Dashboard: React.FC = () => {
   const currentBlobUrlRef = useRef<string | null>(null);
   const speechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const speechTickerRef = useRef<number | null>(null);
+  // Pause-aware clock for native speech: only accumulates elapsed time while actually speaking
+  const speechClockRef = useRef<{
+    elapsed: number;
+    lastTick: number;
+    paused: boolean;
+    rate: number;
+  }>({ elapsed: 0, lastTick: 0, paused: true, rate: 1 });
   const fxTimeoutRef = useRef<number | null>(null);
   const generationIdRef = useRef<number>(0);
   const hasInitializedRef = useRef<boolean>(false);
@@ -231,6 +253,7 @@ export const Dashboard: React.FC = () => {
       speechTickerRef.current = null;
     }
     speechUtteranceRef.current = null;
+    speechClockRef.current = { elapsed: 0, lastTick: 0, paused: true, rate: 1 };
     setIsPlaying(false);
     setCurrentTime(0);
   }, []);
@@ -305,63 +328,102 @@ export const Dashboard: React.FC = () => {
       const voices = window.speechSynthesis.getVoices();
       const isSpanish = language === "es";
       const targetPrefix = isSpanish ? "es" : "en";
-      const prefersFemale =
-        voiceName?.toLowerCase().includes("ada") ||
-        voiceName?.toLowerCase().includes("dalia");
+      const persona = speakerFromVoice(voiceName, speakerRef.current);
+      const prefersFemale = persona === "Ada";
+      setSpeaker(persona);
 
+      const femaleNames = isSpanish
+        ? ["dalia", "paulina", "monica", "mónica", "sabina", "helena", "elvira", "laura", "female", "mujer"]
+        : ["ada", "sonia", "libby", "serena", "kate", "martha", "female", "susan", "hazel"];
+      const maleNames = isSpanish
+        ? ["jorge", "juan", "diego", "pablo", "raul", "álvaro", "alvaro", "carlos", "hombre"]
+        : ["ollie", "ryan", "daniel", "arthur", "george", "oliver", "david", "thomas"];
+      // Neural/online voices sound far more natural than the legacy compact system voices
+      const qualityScore = (v: SpeechSynthesisVoice) => {
+        const n = v.name.toLowerCase();
+        let score = 0;
+        if (/natural|neural|online/.test(n)) score += 4;
+        if (/premium|enhanced|google/.test(n)) score += 3;
+        if (isSpanish && v.lang.toLowerCase() === "es-mx") score += 1;
+        if (!isSpanish && v.lang.toLowerCase() === "en-gb") score += 1;
+        return score;
+      };
+      const isGenderMatch = (v: SpeechSynthesisVoice) => {
+        const n = v.name.toLowerCase();
+        // NOTE: never match on "male" — it is a substring of "female"
+        if (prefersFemale) return femaleNames.some((f) => n.includes(f));
+        return (
+          maleNames.some((m) => n.includes(m)) || /\bmale\b/.test(n)
+        ) && !femaleNames.some((f) => n.includes(f));
+      };
+
+      const languageVoices = voices
+        .filter((v) => v.lang.toLowerCase().startsWith(targetPrefix))
+        .sort((a, b) => qualityScore(b) - qualityScore(a));
       const matchedVoice =
-        voices.find((v) => {
-          if (!v.lang.toLowerCase().startsWith(targetPrefix)) return false;
-          const name = v.name.toLowerCase();
-          return prefersFemale
-            ? name.includes("female") ||
-                name.includes("dalia") ||
-                name.includes("sabina") ||
-                name.includes("helena")
-            : name.includes("male") ||
-                name.includes("jorge") ||
-                name.includes("george") ||
-                name.includes("david");
-        }) || voices.find((v) => v.lang.toLowerCase().startsWith(targetPrefix));
+        languageVoices.find(isGenderMatch) ?? languageVoices[0];
 
       if (matchedVoice) {
         utterance.voice = matchedVoice;
       }
-      utterance.lang = isSpanish ? "es-MX" : "en-GB";
-      utterance.rate = playbackSpeed * 1.05;
-      utterance.pitch = 1.05;
+      utterance.lang = matchedVoice?.lang ?? (isSpanish ? "es-MX" : "en-GB");
+      utterance.rate = playbackSpeed;
+      utterance.pitch = 1.0;
 
       const words = text.split(/\s+/).filter(Boolean).length;
       const estimatedSec = Math.max(10, Math.round(words / 2.6));
       setDuration(estimatedSec);
       setCurrentTime(0);
 
+      const clearTicker = () => {
+        if (speechTickerRef.current) {
+          window.clearInterval(speechTickerRef.current);
+          speechTickerRef.current = null;
+        }
+      };
+
       utterance.onstart = () => {
         setIsPlaying(true);
-        const start = Date.now();
-        if (speechTickerRef.current)
-          window.clearInterval(speechTickerRef.current);
+        speechClockRef.current = {
+          elapsed: 0,
+          lastTick: Date.now(),
+          paused: false,
+          rate: playbackSpeed,
+        };
+        clearTicker();
         speechTickerRef.current = window.setInterval(() => {
-          const elapsed = ((Date.now() - start) / 1000) * playbackSpeed;
-          setCurrentTime(Math.min(estimatedSec, Math.floor(elapsed)));
+          const clock = speechClockRef.current;
+          const now = Date.now();
+          if (!clock.paused) {
+            clock.elapsed += ((now - clock.lastTick) / 1000) * clock.rate;
+          }
+          clock.lastTick = now;
+          setCurrentTime(Math.min(estimatedSec, clock.elapsed));
         }, 250);
+      };
+
+      // Some browsers emit these when speechSynthesis.pause()/resume() is called
+      utterance.onpause = () => {
+        speechClockRef.current.paused = true;
+        setIsPlaying(false);
+      };
+      utterance.onresume = () => {
+        speechClockRef.current.lastTick = Date.now();
+        speechClockRef.current.paused = false;
+        setIsPlaying(true);
       };
 
       utterance.onend = () => {
         setIsPlaying(false);
         setCurrentTime(estimatedSec);
-        if (speechTickerRef.current) {
-          window.clearInterval(speechTickerRef.current);
-          speechTickerRef.current = null;
-        }
+        speechClockRef.current.paused = true;
+        clearTicker();
       };
 
       utterance.onerror = () => {
         setIsPlaying(false);
-        if (speechTickerRef.current) {
-          window.clearInterval(speechTickerRef.current);
-          speechTickerRef.current = null;
-        }
+        speechClockRef.current.paused = true;
+        clearTicker();
       };
 
       window.speechSynthesis.speak(utterance);
@@ -569,10 +631,7 @@ export const Dashboard: React.FC = () => {
         setFullTimeSummary(res);
         setIsGeneratingSummary(false);
 
-        const assignedSpeaker =
-          res.voice && res.voice.toLowerCase().includes("ada")
-            ? "Ada"
-            : "Ollie";
+        const assignedSpeaker = speakerFromVoice(res.voice);
         setSpeaker(assignedSpeaker);
 
         if (res.story) {
@@ -701,10 +760,7 @@ export const Dashboard: React.FC = () => {
           : `Synced to ${clampedStopped}'–${targetCurrentMin}' Window`
       );
 
-      const assignedSpeaker =
-        res.voice && res.voice.toLowerCase().includes("ada")
-          ? "Ada"
-          : "Ollie";
+      const assignedSpeaker = speakerFromVoice(res.voice);
       setSpeaker(assignedSpeaker);
 
       const narrationScript = [
@@ -744,9 +800,7 @@ export const Dashboard: React.FC = () => {
           );
 
           if (audioRes.voice) {
-            setSpeaker(
-              audioRes.voice.toLowerCase().includes("ada") ? "Ada" : "Ollie"
-            );
+            setSpeaker(speakerFromVoice(audioRes.voice, assignedSpeaker));
           }
           if (audioRes.audioUrl) {
             playFreshAudioDataUrl(audioRes.audioUrl);
@@ -836,9 +890,12 @@ export const Dashboard: React.FC = () => {
       window.speechSynthesis.speaking
     ) {
       if (window.speechSynthesis.paused) {
+        speechClockRef.current.lastTick = Date.now();
+        speechClockRef.current.paused = false;
         window.speechSynthesis.resume();
         setIsPlaying(true);
       } else {
+        speechClockRef.current.paused = true;
         window.speechSynthesis.pause();
         setIsPlaying(false);
       }

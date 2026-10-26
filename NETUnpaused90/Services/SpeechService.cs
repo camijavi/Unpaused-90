@@ -12,6 +12,8 @@ public class SpeechService
 {
     private const string MaleBritishVoice = "en-GB-OllieMultilingualNeural";
     private const string FemaleBritishVoice = "en-GB-AdaMultilingualNeural";
+    private const string MaleSpanishVoice = "es-MX-JorgeNeural";
+    private const string FemaleSpanishVoice = "es-MX-DaliaNeural";
 
     private readonly IConfiguration _configuration;
     private readonly ILogger<SpeechService> _logger;
@@ -87,9 +89,14 @@ public class SpeechService
 
         var xmlLang = isSpanish ? "es-MX" : "en-GB";
 
+        // Persona voice (Ollie / Ada) — always returned to the client so the UI highlights the right co-host.
         var selectedVoice = !string.IsNullOrWhiteSpace(request.Voice)
             ? request.Voice.Trim()
             : NextAlternatingVoice();
+
+        // English multilingual voices speaking Spanish sound accented/flat. Use native Spanish neural voices
+        // mapped to the same persona gender for natural Spanish delivery.
+        var synthesisVoice = isSpanish ? ResolveSpanishVoice(selectedVoice) : selectedVoice;
 
         var paragraphs = request.Text
             .Split(["\r\n\r\n", "\n\n"], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -117,11 +124,12 @@ public class SpeechService
         var ttsUrl = $"https://{region}.tts.speech.microsoft.com/cognitiveservices/v1";
 
         _logger.LogInformation(
-            "Synthesizing audio using voice '{VoiceName}' ({Language})...",
+            "Synthesizing audio using voice '{VoiceName}' (persona '{Persona}', {Language})...",
+            synthesisVoice,
             selectedVoice,
             xmlLang);
 
-        var ssml = BuildUnifiedEmotionalSsml(paragraphs, selectedVoice, xmlLang);
+        var ssml = BuildNaturalSsml(paragraphs, synthesisVoice, xmlLang, isSpanish);
         var audioBytes = await SynthesizeSingleSegmentAsync(ttsUrl, ssml, apiKey, authHeaderValue, cancellationToken);
 
         return (audioBytes, selectedVoice, isSpanish ? "es" : "en");
@@ -171,6 +179,64 @@ public class SpeechService
         }
 
         throw new InvalidOperationException("Azure AI Speech synthesis failed after retry.");
+    }
+
+    /// <summary>
+    /// Maps a persona voice (Ollie = male, Ada = female) to a native Spanish neural voice.
+    /// Configurable via AzureSpeech:SpanishMaleVoiceName / AzureSpeech:SpanishFemaleVoiceName.
+    /// </summary>
+    private string ResolveSpanishVoice(string personaVoice)
+    {
+        // A caller explicitly asking for a Spanish voice gets it as-is.
+        if (personaVoice.StartsWith("es-", StringComparison.OrdinalIgnoreCase))
+        {
+            return personaVoice;
+        }
+
+        var femaleVoice = _configuration["AzureSpeech:FemaleVoiceName"] ?? FemaleBritishVoice;
+        var isFemale = personaVoice.Contains("Ada", StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(personaVoice, femaleVoice, StringComparison.OrdinalIgnoreCase);
+
+        return isFemale
+            ? _configuration["AzureSpeech:SpanishFemaleVoiceName"] ?? FemaleSpanishVoice
+            : _configuration["AzureSpeech:SpanishMaleVoiceName"] ?? MaleSpanishVoice;
+    }
+
+    private static string BuildNaturalSsml(List<string> paragraphs, string voiceName, string xmlLang, bool isSpanish)
+    {
+        return isSpanish
+            ? BuildSpanishSsml(paragraphs, voiceName, xmlLang)
+            : BuildUnifiedEmotionalSsml(paragraphs, voiceName, xmlLang);
+    }
+
+    /// <summary>
+    /// Spanish SSML: native voice, one continuous prosody envelope and natural pauses.
+    /// Per-sentence pitch/rate jumps were the main source of the "robotic" Spanish delivery, so the
+    /// neural model is left to drive intonation from punctuation (¡…! / ¿…?) on its own.
+    /// </summary>
+    private static string BuildSpanishSsml(List<string> paragraphs, string voiceName, string xmlLang)
+    {
+        var sb = new StringBuilder();
+        sb.Append($"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='https://www.w3.org/2001/mstts' xml:lang='{xmlLang}'>");
+        sb.Append($"<voice name='{voiceName}'>");
+        sb.Append("<prosody rate='+4%'>");
+
+        for (int pIdx = 0; pIdx < paragraphs.Count; pIdx++)
+        {
+            var escaped = SecurityElement.Escape(paragraphs[pIdx].Trim()) ?? string.Empty;
+            sb.Append(escaped);
+
+            if (pIdx < paragraphs.Count - 1)
+            {
+                sb.Append(" <break time='450ms'/> ");
+            }
+        }
+
+        sb.Append("</prosody>");
+        sb.Append("</voice>");
+        sb.Append("</speak>");
+
+        return sb.ToString();
     }
 
     private static string BuildUnifiedEmotionalSsml(List<string> paragraphs, string voiceName, string xmlLang)
