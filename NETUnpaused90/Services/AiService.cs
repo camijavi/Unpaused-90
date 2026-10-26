@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Azure.AI.OpenAI;
 using Azure.Core;
+using Microsoft.Extensions.Caching.Memory;
 using NETUnpaused90.Models;
 using OpenAI.Chat;
 
@@ -15,6 +16,7 @@ public class AiService
     private readonly MatchService _matchService;
     private readonly SpeechService _speechService;
     private readonly TokenCredential _credential;
+    private readonly IMemoryCache _cache;
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
@@ -25,13 +27,15 @@ public class AiService
         ILogger<AiService> logger,
         MatchService matchService,
         SpeechService speechService,
-        TokenCredential credential)
+        TokenCredential credential,
+        IMemoryCache cache)
     {
         _configuration = configuration;
         _logger = logger;
         _matchService = matchService;
         _speechService = speechService;
         _credential = credential;
+        _cache = cache;
     }
 
     public async Task<CatchUpResponse?> GenerateCatchUpAsync(
@@ -42,6 +46,13 @@ public class AiService
         if (match is null)
         {
             return null;
+        }
+
+        var langCode = string.Equals(request.Language, "es", StringComparison.OrdinalIgnoreCase) ? "es" : "en";
+        var cacheKey = $"catchup:{request.MatchId}:{request.LastViewedMinute}:{request.CurrentMinute}:{request.ViewMode}:{request.FavoriteTeam}:{request.Length}:{langCode}";
+        if (!request.IncludeAudio && _cache.TryGetValue(cacheKey, out CatchUpResponse? cachedCatchUp) && cachedCatchUp is not null)
+        {
+            return cachedCatchUp;
         }
 
         var filteredEvents = match.Timeline
@@ -173,7 +184,7 @@ Return ONLY a valid JSON object with these exact 4 keys:
             }
         }
 
-        return parsed with
+        var result = parsed with
         {
             Length = normalizedLength,
             WordCount = wordCount,
@@ -183,6 +194,13 @@ Return ONLY a valid JSON object with these exact 4 keys:
             CurrentMinute = request.CurrentMinute,
             LastViewedMinute = request.LastViewedMinute
         };
+
+        if (!request.IncludeAudio)
+        {
+            _cache.Set(cacheKey, result, TimeSpan.FromMinutes(20));
+        }
+
+        return result;
     }
 
     public async Task<PersonalizedSummaryResponse?> GeneratePersonalizedSummaryAsync(
@@ -193,6 +211,13 @@ Return ONLY a valid JSON object with these exact 4 keys:
         if (match is null)
         {
             return null;
+        }
+
+        var langCode = string.Equals(request.Language, "es", StringComparison.OrdinalIgnoreCase) ? "es" : "en";
+        var cacheKey = $"summary:{request.MatchId}:{request.Mode}:{request.FavoriteTeam}:{request.Length}:{langCode}";
+        if (!request.IncludeAudio && _cache.TryGetValue(cacheKey, out PersonalizedSummaryResponse? cachedSummary) && cachedSummary is not null)
+        {
+            return cachedSummary;
         }
 
         var (systemPersona, modeGuidelines, temperature) = GetAudiencePersonaProfile(request.Mode);
@@ -288,7 +313,7 @@ Return ONLY a valid JSON object with the exact key:
             }
         }
 
-        return new PersonalizedSummaryResponse(
+        var result = new PersonalizedSummaryResponse(
             MatchId: match.MatchId,
             Mode: request.Mode,
             FavoriteTeam: request.FavoriteTeam,
@@ -299,6 +324,13 @@ Return ONLY a valid JSON object with the exact key:
             Voice: assignedVoice,
             AudioUrl: audioUrl
         );
+
+        if (!request.IncludeAudio)
+        {
+            _cache.Set(cacheKey, result, TimeSpan.FromMinutes(20));
+        }
+
+        return result;
     }
 
     public async Task<ExplainEventResponse?> ExplainEventAsync(
@@ -317,6 +349,13 @@ Return ONLY a valid JSON object with the exact key:
         if (targetEvent is null)
         {
             return null;
+        }
+
+        var langCode = string.Equals(request.Language, "es", StringComparison.OrdinalIgnoreCase) ? "es" : "en";
+        var cacheKey = $"explain:{request.MatchId}:{request.EventId}:{request.ViewMode}:{request.FavoriteTeam}:{langCode}";
+        if (_cache.TryGetValue(cacheKey, out ExplainEventResponse? cachedResponse) && cachedResponse is not null)
+        {
+            return cachedResponse;
         }
 
         var precedingEvents = match.Timeline
@@ -392,12 +431,15 @@ Return ONLY a valid JSON object with the exact keys:
             (title, explanation) = GenerateHighFidelityExplanation(request, targetEvent, match);
         }
 
-        return new ExplainEventResponse(
+        var response = new ExplainEventResponse(
             EventId: targetEvent.EventId,
             Minute: targetEvent.Minute,
             Title: title,
             Explanation: explanation
         );
+
+        _cache.Set(cacheKey, response, TimeSpan.FromMinutes(30));
+        return response;
     }
 
     private CatchUpResponse GenerateHighFidelityCatchUp(

@@ -7,6 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Shared Singleton TokenCredential so all Azure services (Blob, OpenAI, Speech) share and cache Entra ID tokens
 builder.Services.AddSingleton<TokenCredential, AppTokenCredential>();
 builder.Services.AddSingleton<HttpClient>();
+builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<MatchService>();
 builder.Services.AddSingleton<AiService>();
 builder.Services.AddSingleton<SpeechService>();

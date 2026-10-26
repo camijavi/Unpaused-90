@@ -202,6 +202,13 @@ export const Dashboard: React.FC = () => {
   const [activeAnimation, setActiveAnimation] =
     useState<EventAnimationPayload | null>(null);
 
+  // Client-side cache for instant language switching without re-triggering AI generation
+  const explanationsCacheRef = useRef<Map<string, { title: string; explanation: string }>>(
+    new Map()
+  );
+  const catchUpCacheRef = useRef<Map<string, CatchUpResponse>>(new Map());
+  const summaryCacheRef = useRef<Map<string, PersonalizedSummaryResponse>>(new Map());
+
   // Audio Player state
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [isSynthesizing, setIsSynthesizing] = useState<boolean>(false);
@@ -467,6 +474,17 @@ export const Dashboard: React.FC = () => {
         currentEffectiveLang
       );
 
+      const cacheKey = `${activeMatchId}:${ev.eventId}:${mode}:${bias}:${currentEffectiveLang}`;
+      const cached = explanationsCacheRef.current.get(cacheKey);
+      if (cached) {
+        setEventExplanation({
+          title: cached.title,
+          explanation: cached.explanation,
+          loading: false,
+        });
+        return;
+      }
+
       setEventExplanation({
         title: formatted.title,
         explanation: "",
@@ -481,9 +499,15 @@ export const Dashboard: React.FC = () => {
           favoriteTeam: mapBiasToFavoriteTeam(bias),
           language: currentEffectiveLang,
         });
+        const finalTitle = res.title || formatted.title;
+        const finalExplanation = res.explanation;
+        explanationsCacheRef.current.set(cacheKey, {
+          title: finalTitle,
+          explanation: finalExplanation,
+        });
         setEventExplanation({
-          title: res.title || formatted.title,
-          explanation: res.explanation,
+          title: finalTitle,
+          explanation: finalExplanation,
           loading: false,
         });
       } catch (err) {
@@ -505,6 +529,11 @@ export const Dashboard: React.FC = () => {
       setSubSeconds(0);
       prevMinuteRef.current = matchData.currentMinute;
       minuteStartTimeRef.current = Date.now();
+
+      // Clear caches on simulation reset
+      explanationsCacheRef.current.clear();
+      catchUpCacheRef.current.clear();
+      summaryCacheRef.current.clear();
 
       // Record already-elapsed events at the starting minute so only new live events fire animations
       seenEventIdsRef.current = new Set(matchData.timeline.map((e) => e.eventId));
@@ -625,17 +654,24 @@ export const Dashboard: React.FC = () => {
         setTranscriptLine("Generating Full-Time 90' Match Summary...");
       }
 
+      const activeMatchId = match?.matchId ?? "PL2027-001";
+      const summaryCacheKey = `${activeMatchId}:${mode}:${bias}:${length}:${lang}`;
+      const cachedSummary = summaryCacheRef.current.get(summaryCacheKey);
+
       try {
-        const res = await generatePersonalizedSummary({
-          matchId: match?.matchId ?? "PL2027-001",
-          mode,
-          favoriteTeam: mapBiasToFavoriteTeam(bias),
-          language: lang,
-          length,
-          includeAudio: false,
-        });
+        const res =
+          cachedSummary ??
+          (await generatePersonalizedSummary({
+            matchId: activeMatchId,
+            mode,
+            favoriteTeam: mapBiasToFavoriteTeam(bias),
+            language: lang,
+            length,
+            includeAudio: false,
+          }));
 
         if (myGenId !== generationIdRef.current) return;
+        summaryCacheRef.current.set(summaryCacheKey, res);
         setFullTimeSummary(res);
         setIsGeneratingSummary(false);
 
@@ -726,19 +762,25 @@ export const Dashboard: React.FC = () => {
       // Lock the generating window immediately so the button display NEVER drifts or updates
       setGeneratingWindow({ stopped: clampedStopped, current: targetCurrentMin });
 
+      const catchUpCacheKey = `${activeMatchId}:${clampedStopped}:${targetCurrentMin}:${mode}:${bias}:${length}:${lang}`;
+      const cachedCatchUp = catchUpCacheRef.current.get(catchUpCacheKey);
+
       let res: CatchUpResponse;
       try {
         // Step 1: Fetch the 4 intelligence cards first (includeAudio: false)
-        res = await generateCatchUp({
-          matchId: activeMatchId,
-          lastViewedMinute: clampedStopped,
-          currentMinute: targetCurrentMin,
-          viewMode: mode,
-          favoriteTeam: mapBiasToFavoriteTeam(bias),
-          language: lang,
-          length,
-          includeAudio: false,
-        });
+        res =
+          cachedCatchUp ??
+          (await generateCatchUp({
+            matchId: activeMatchId,
+            lastViewedMinute: clampedStopped,
+            currentMinute: targetCurrentMin,
+            viewMode: mode,
+            favoriteTeam: mapBiasToFavoriteTeam(bias),
+            language: lang,
+            length,
+            includeAudio: false,
+          }));
+        catchUpCacheRef.current.set(catchUpCacheKey, res);
       } catch (err) {
         console.error("Error in generateCatchUp:", err);
         if (myGenId === generationIdRef.current) {
