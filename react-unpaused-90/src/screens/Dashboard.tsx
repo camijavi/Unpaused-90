@@ -141,7 +141,7 @@ function mapBiasToFavoriteTeam(bias: "neutral" | "arsenal" | "liverpool"): strin
 }
 
 export const Dashboard: React.FC = () => {
-  const { setLanguage: setGlobalLanguage, t } = useLanguage();
+  const { language: globalLanguage, setLanguage: setGlobalLanguage, t } = useLanguage();
   const [match, setMatch] = useState<MatchData | null>(FALLBACK_MATCH);
   const [timeline, setTimeline] = useState<TimelineEvent[]>(FALLBACK_MATCH.timeline);
   const [insights, setInsights] = useState<GeneratedInsight[]>(
@@ -156,6 +156,11 @@ export const Dashboard: React.FC = () => {
   const [bias, setBias] = useState<"neutral" | "arsenal" | "liverpool">("neutral");
   const [length, setLength] = useState<"1m" | "5m" | "full">("1m");
   const [lang, setLang] = useState<"en" | "es">("en");
+
+  // Keep local audio language in sync whenever the global language changes
+  useEffect(() => {
+    setLang(globalLanguage);
+  }, [globalLanguage]);
 
   // Align global language with audio feed selection, eventhough user can select a different value than their global language value
   const handleGlobalLanguageChange = useCallback(
@@ -453,12 +458,13 @@ export const Dashboard: React.FC = () => {
       const homeCode = match?.homeTeam.teamId ?? "ARS";
       const homeName = match?.homeTeam.name ?? "Arsenal";
       const awayName = match?.awayTeam.name ?? "Liverpool";
+      const currentEffectiveLang = globalLanguage ?? lang;
       const formatted = formatTimelineEventTitle(
         ev,
         homeCode,
         homeName,
         awayName,
-        lang
+        currentEffectiveLang
       );
 
       setEventExplanation({
@@ -473,7 +479,7 @@ export const Dashboard: React.FC = () => {
           eventId: ev.eventId,
           viewMode: mode,
           favoriteTeam: mapBiasToFavoriteTeam(bias),
-          language: lang,
+          language: currentEffectiveLang,
         });
         setEventExplanation({
           title: res.title || formatted.title,
@@ -485,7 +491,7 @@ export const Dashboard: React.FC = () => {
         setEventExplanation(null);
       }
     },
-    [bias, lang, match, mode]
+    [bias, globalLanguage, lang, match, mode]
   );
 
   // Step 1 & Step 2: Initialize or Reset Match Simulation at a random minute (1..90)
