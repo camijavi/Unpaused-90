@@ -1,6 +1,7 @@
 import React from "react";
 import type { MatchData } from "../types/match";
 import { BallIcon } from "./Icons";
+import { useLanguage } from "../languages/LanguageContext";
 
 interface LiveGroundsProps {
   match: MatchData | null;
@@ -13,6 +14,7 @@ export const LiveGrounds: React.FC<LiveGroundsProps> = ({
   initialStartMinute,
   onResetSimulation,
 }) => {
+  const { t } = useLanguage();
   const homeName = match?.homeTeam.name ?? "Arsenal";
   const awayName = match?.awayTeam.name ?? "Liverpool";
   const homeScore = match?.homeTeam.score ?? 0;
@@ -24,7 +26,7 @@ export const LiveGrounds: React.FC<LiveGroundsProps> = ({
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[11px] font-display font-extrabold uppercase tracking-widest text-pl-purple px-2">
-          LIVE GROUNDS:
+          {t.liveGrounds.liveGrounds}
         </span>
 
         <button
@@ -35,7 +37,7 @@ export const LiveGrounds: React.FC<LiveGroundsProps> = ({
           <BallIcon className="w-4 h-4 text-red-600 shrink-0" />
           <span>
             {homeName} {homeScore} – {awayScore} {awayName} (
-            {isFullTime ? "FT 90'" : `${minute}'`})
+            {isFullTime ? t.liveGrounds.fullTimeShort : `${minute}'`})
           </span>
         </button>
       </div>
@@ -43,9 +45,10 @@ export const LiveGrounds: React.FC<LiveGroundsProps> = ({
       <div className="flex flex-wrap items-center gap-2.5 px-2 sm:px-0">
         {initialStartMinute !== null && initialStartMinute !== undefined && (
           <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
-            Random Start:{" "}
+            {t.liveGrounds.randomStart}{" "}
             <strong className="text-pl-purple">{initialStartMinute}&apos;</strong>{" "}
-            • Clock: <strong className="text-slate-700">1 min / 30s (2× Speed)</strong>
+            • {t.liveGrounds.clock}{" "}
+            <strong className="text-slate-700">{t.liveGrounds.speed}</strong>
           </span>
         )}
         {onResetSimulation && (
@@ -54,7 +57,7 @@ export const LiveGrounds: React.FC<LiveGroundsProps> = ({
             onClick={onResetSimulation}
             className="px-3 py-1.5 rounded-lg text-xs font-mono font-bold uppercase tracking-wider bg-pl-purple text-white hover:brightness-110 transition-all shadow-sm cursor-pointer"
           >
-            Simulate Random Minute (1&apos;–90&apos;) ↻
+            {t.liveGrounds.simulateRandom}
           </button>
         )}
       </div>

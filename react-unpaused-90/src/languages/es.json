@@ -1,0 +1,206 @@
+{
+  "navbar": {
+    "insideTheGame": "DENTRO DEL JUEGO",
+    "tagline": "Nunca sientas que te perdiste el partido.",
+    "newRandomMatch": "Nuevo Partido Aleatorio (1'–90') ↻",
+    "newRandomMatchTitle": "Iniciar una nueva simulación de partido en vivo comenzando en un minuto aleatorio (1'–90')",
+    "live": "EN VIVO •",
+    "fullTime": "TIEMPO COMPLETO • 90:00",
+    "language": "Idioma",
+    "english": "English",
+    "spanish": "Español",
+    "englishBadge": "EN",
+    "spanishBadge": "ES"
+  },
+  "liveGrounds": {
+    "liveGrounds": "CAMPOS EN VIVO:",
+    "randomStart": "Inicio Aleatorio:",
+    "clock": "Reloj:",
+    "speed": "1 min / 30s (Velocidad 2×)",
+    "simulateRandom": "Simular Minuto Aleatorio (1'–90') ↻",
+    "fullTimeShort": "TC 90'"
+  },
+  "scoreContainer": {
+    "officialFeed": "TRANSMISIÓN OFICIAL PREMIER LEAGUE",
+    "interactiveTimeWarp": "Salto Temporal Interactivo y Puesta al Día al Instante",
+    "unpausedWindow": "Ventana Recuperada",
+    "stadium": "Emirates Stadium, Londres • Jornada 28",
+    "possession": "POSESIÓN:",
+    "timelineInstruction": "Haz clic en cualquier evento (Gol, Tarjeta Roja, Tarjeta Amarilla, Sustitución) para ver su animación de transmisión y análisis táctico",
+    "timelineEvent": "EVENTO DEL PARTIDO",
+    "replayAnimation": "▶ Reproducir Animación del Evento",
+    "halves": {
+      "firstHalf": "1er Tiempo",
+      "halfTime": "Medio Tiempo",
+      "secondHalf": "2do Tiempo",
+      "fullTime": "Tiempo Completo"
+    },
+    "timelineTicks": {
+      "kickOff": "Inicio 0'",
+      "halfTime": "MT 45'",
+      "fullTime": "TC 90'"
+    }
+  },
+  "heroConsole": {
+    "badge": "CONSOLA HERO • PERSONALIZA TU RESUMEN",
+    "title": "Selector Temporal y Mezclador de Persona de Transmisión",
+    "missedAction": "Acción Perdida:",
+    "missedMinute": "minuto perdido",
+    "missedMinutes": "minutos perdidos",
+    "controls": {
+      "timeWindow": {
+        "number": "01. Dejé de Ver En",
+        "sub": "Minuto del partido",
+        "label": "Dejé de ver en:",
+        "minLabel": "1' (Inicio)",
+        "liveNow": "En Vivo",
+        "windowPrefix": "Ventana a Ponerse al Día:"
+      },
+      "persona": {
+        "number": "02. Persona de Transmisión",
+        "sub": "Adaptación a la audiencia",
+        "casual": {
+          "label": "Aficionado Ocasional",
+          "sub": "Historia y Emoción"
+        },
+        "analyst": {
+          "label": "Analista / Entrenador",
+          "sub": "Táctica y Esquema"
+        },
+        "child": {
+          "label": "Público Infantil (6–10)",
+          "sub": "Sencillo y Divertido"
+        }
+      },
+      "bias": {
+        "number": "03. Inclinación de Aficionado",
+        "sub": "Preferencia de equipo",
+        "neutral": "Neutral 50/50",
+        "arsenal": "Aficionado del Arsenal",
+        "liverpool": "Aficionado del Liverpool"
+      },
+      "recapDepth": {
+        "number": "04. Profundidad del Resumen",
+        "title": "Selecciona la Duración de la Narración",
+        "options": {
+          "sprint": {
+            "label": "Sprint Rápido de 1m",
+            "shortLabel": "Sprint 1m",
+            "sub": "~25s Audio • 60–75 palabras",
+            "badge": "RÁPIDO"
+          },
+          "deep": {
+            "label": "Resumen Profundo de 5m",
+            "shortLabel": "Profundo 5m",
+            "sub": "~2m Audio • 320–380 palabras",
+            "badge": "TÁCTICO"
+          },
+          "full": {
+            "label": "Resumen Completo del Partido",
+            "shortLabel": "Historia Completa",
+            "sub": "~4m Audio • 500–600 palabras",
+            "badge": "COMPLETO"
+          }
+        }
+      },
+      "audioFeed": {
+        "number": "05. Canal de Audio",
+        "title": "Selecciona el Idioma de Comentarios",
+        "options": {
+          "en": {
+            "label": "Inglés Británico",
+            "shortLabel": "English (GB)",
+            "sub": "Comentarios de Ollie y Ada",
+            "badge": "en-GB"
+          },
+          "es": {
+            "label": "Español (México)",
+            "shortLabel": "Español (MX)",
+            "sub": "Crónica y Análisis en Español",
+            "badge": "es-MX"
+          }
+        }
+      }
+    },
+    "cta": {
+      "activeProfile": "PERFIL DE NARRACIÓN ACTIVO:",
+      "generateBtn": "Ponerse al Día y Reproducir Audio",
+      "generatingBtn": "Generando Resumen en Vivo",
+      "generatingNotice": "Fijando ventana en vivo y sintetizando crónica personalizada..."
+    }
+  },
+  "cards": {
+    "deckBadge": "PANEL INTELIGENTE DE RESUMEN EN VIVO",
+    "deckTitle": "Tarjetas Narrativas y Tácticas Personalizadas",
+    "deckWindow": "Ventana:",
+    "dismiss": "Ocultar Panel de Resumen (X)",
+    "card1": {
+      "tag": "01 / NARRATIVA",
+      "title": "Qué Sucedió",
+      "fallback": "Haz clic en 'Ponerse al Día' en la Consola Hero superior para generar la crónica en vivo de los minutos perdidos."
+    },
+    "card2": {
+      "tag": "02 / TÁCTICA",
+      "title": "Decisiones Tácticas Clave",
+      "fallback": "El duelo táctico entre Arteta y Slot evoluciona a medida que los esquemas y las presiones se ajustan."
+    },
+    "card3": {
+      "tag": "03 / GIRO DE RITMO",
+      "title": "Cambios de Ritmo y Momentum",
+      "fallback": "Evaluando fases de posesión, presión alta y cambios en el control territorial...",
+      "passAcc": "PRECISIÓN PASES:",
+      "shots": "TIROS:"
+    },
+    "card4": {
+      "tag": "04 / SITUACIÓN",
+      "title": "Estado Actual del Partido",
+      "fallback": "Situación táctica actual y aspectos a seguir conforme avanza el partido.",
+      "tacticalContext": "CONTEXTO TÁCTICO PARA TU REGRESO:"
+    }
+  },
+  "audioDock": {
+    "badge": "REPRODUCTOR SINCRONIZADO DE TRANSMISIÓN",
+    "title": "Locución Neuronal en Vivo (Ollie y Ada)",
+    "dismiss": "Cerrar Reproductor de Audio (X)",
+    "hostVoice": "Voz de Locutor:",
+    "ollie": "Ollie (Conductor UK)",
+    "ada": "Ada (Analista)",
+    "playing": "Reproduciendo",
+    "paused": "Pausado",
+    "replay": "Repetir Audio del Resumen",
+    "speed": "Velocidad",
+    "transcriptTitle": "Subtítulos y Transcripción en Vivo",
+    "waitingTranscript": "Generando tu resumen de partido personalizado en vivo...",
+    "generatingAudio": "Sintetizando audio neuronal personalizado..."
+  },
+  "dashboard": {
+    "fullTimeBanner": {
+      "title": "FINAL DEL PARTIDO • 90' TIEMPO COMPLETO ALCANZADO",
+      "subtitle": "¡El partido ha concluido! Revisa la historia completa o genera un informe integral posterior al partido.",
+      "generateBtn": "Generar Crónica Personalizada de Tiempo Completo",
+      "generatingBtn": "Sintetizando Crónica de Tiempo Completo...",
+      "dismiss": "Cerrar (X)"
+    },
+    "fullTimeDeck": {
+      "badge": "INFORME OFICIAL DE TIEMPO COMPLETO",
+      "title": "Resumen Táctico y Narrativo Completo de los 90 Minutos",
+      "finalScore": "Resultado Final:",
+      "report": "Crónica Oficial del Partido:",
+      "tacticalSummary": "Resumen Táctico:",
+      "turningPoint": "Punto de Inflexión Decisivo:"
+    },
+    "status": {
+      "synced": "Sincronizado con la Ventana del Partido en Vivo",
+      "generating": "Generando resumen personalizado en vivo...",
+      "synthesizing": "Sintetizando audio de transmisión..."
+    }
+  },
+  "common": {
+    "loading": "Cargando...",
+    "error": "Error",
+    "close": "Cerrar",
+    "replay": "Repetir",
+    "minuteShort": "min",
+    "minutesShort": "mins"
+  }
+}

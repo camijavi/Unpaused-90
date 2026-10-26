@@ -174,3 +174,85 @@ export async function synthesizeAudio(
   }
   return res.json();
 }
+
+export async function fetchMatchPossession(
+  matchId = "PL2027-001",
+  minute?: number
+): Promise<{
+  matchId: string;
+  minute: number;
+  possession: { home: number; away: number };
+  homeTeam: string;
+  awayTeam: string;
+  score: string;
+  status: string;
+}> {
+  const query = minute !== undefined ? `?minute=${minute}` : "";
+  const res = await fetchWithFallback(
+    `/api/v1/matches/${matchId}/possession${query}`
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to fetch possession for ${matchId}: ${res.status}`);
+  }
+  return res.json();
+}
+
+/**
+ * Manages and calculates dynamic possession percentages for any simulated match minute,
+ * ensuring possession adapts to real match events (pressure sequences, red cards, momentum swings).
+ */
+export function managePossessionUpdates(
+  minute: number,
+  activeEvents: TimelineEvent[] = [],
+  baselineHome = 54
+): { home: number; away: number } {
+  let homePos = baselineHome;
+
+  // Progression baseline
+  if (minute < 15) {
+    homePos = 58.0 + (minute / 15.0) * 4.0;
+  } else if (minute < 35) {
+    homePos = 62.0 - ((minute - 15.0) / 20.0) * 12.0;
+  } else if (minute < 55) {
+    homePos = 50.0 + ((minute - 35.0) / 20.0) * 5.0;
+  } else {
+    homePos = 55.0 + ((minute - 55.0) / 35.0) * 5.0;
+  }
+
+  // Red card man-advantage adjustments
+  const homeReds = activeEvents.filter(
+    (e) =>
+      e.eventType.toLowerCase() === "redcard" &&
+      (e.team === "ARS" || e.team.toLowerCase().includes("arsenal"))
+  ).length;
+
+  const awayReds = activeEvents.filter(
+    (e) =>
+      e.eventType.toLowerCase() === "redcard" &&
+      (e.team === "LIV" || e.team.toLowerCase().includes("liverpool"))
+  ).length;
+
+  const netAdvantage = awayReds - homeReds;
+  let eventDelta = netAdvantage * 2.5;
+
+  // Recent pressure sequences in the last 3 minutes
+  const recentPressure = activeEvents.filter(
+    (e) =>
+      e.minute >= minute - 3 &&
+      e.minute <= minute &&
+      e.eventType.toLowerCase().includes("pressure")
+  );
+
+  for (const seq of recentPressure) {
+    const isHome =
+      seq.team === "ARS" || seq.team.toLowerCase().includes("arsenal");
+    const dur = Math.min(2.0, Math.max(0.5, (seq.durationSeconds ?? 60) / 60));
+    eventDelta += (isHome ? 1.5 : -1.5) * dur;
+  }
+
+  const finalHome = Math.min(75, Math.max(25, Math.round(homePos + eventDelta)));
+  return {
+    home: finalHome,
+    away: 100 - finalHome,
+  };
+}

@@ -9,6 +9,7 @@ import HeroConsole from "../components/HeroConsole";
 import Cards from "../components/Cards";
 import AudioPlayerDock from "../components/AudioPlayerDock";
 import { BallIcon, HeadphonesIcon } from "../components/Icons";
+import { useLanguage } from "../languages/LanguageContext";
 import {
   explainTimelineEvent,
   fetchMatchById,
@@ -129,6 +130,7 @@ function mapBiasToFavoriteTeam(bias: "neutral" | "arsenal" | "liverpool"): strin
 }
 
 export const Dashboard: React.FC = () => {
+  const { setLanguage: setGlobalLanguage, t } = useLanguage();
   const [match, setMatch] = useState<MatchData | null>(FALLBACK_MATCH);
   const [timeline, setTimeline] = useState<TimelineEvent[]>(FALLBACK_MATCH.timeline);
   const [insights, setInsights] = useState<GeneratedInsight[]>(
@@ -144,6 +146,15 @@ export const Dashboard: React.FC = () => {
   const [length, setLength] = useState<"1m" | "5m" | "full">("1m");
   const [lang, setLang] = useState<"en" | "es">("en");
 
+  // Align global language with audio feed selection, eventhough user can select a different value than their global language value
+  const handleGlobalLanguageChange = useCallback(
+    (newLang: "en" | "es") => {
+      setGlobalLanguage(newLang);
+      setLang(newLang);
+    },
+    [setGlobalLanguage]
+  );
+
   // Visibility state: Hidden by default until user clicks "Catch Me Up & Auto-Play Audio"
   const [showCatchUpDeck, setShowCatchUpDeck] = useState<boolean>(false);
   const [showAudioDock, setShowAudioDock] = useState<boolean>(false);
@@ -157,6 +168,10 @@ export const Dashboard: React.FC = () => {
   // LiveCatchUp & Event Inspector state
   const [catchUp, setCatchUp] = useState<CatchUpResponse | null>(null);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [generatingWindow, setGeneratingWindow] = useState<{
+    stopped: number;
+    current: number;
+  } | null>(null);
   const [statusBadgeText, setStatusBadgeText] = useState<string>(
     "Synced to Live Match Window"
   );
@@ -184,6 +199,8 @@ export const Dashboard: React.FC = () => {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const currentBlobUrlRef = useRef<string | null>(null);
+  const speechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const speechTickerRef = useRef<number | null>(null);
   const fxTimeoutRef = useRef<number | null>(null);
   const generationIdRef = useRef<number>(0);
   const hasInitializedRef = useRef<boolean>(false);
@@ -206,6 +223,14 @@ export const Dashboard: React.FC = () => {
       URL.revokeObjectURL(currentBlobUrlRef.current);
       currentBlobUrlRef.current = null;
     }
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    if (speechTickerRef.current) {
+      window.clearInterval(speechTickerRef.current);
+      speechTickerRef.current = null;
+    }
+    speechUtteranceRef.current = null;
     setIsPlaying(false);
     setCurrentTime(0);
   }, []);
@@ -262,6 +287,84 @@ export const Dashboard: React.FC = () => {
             });
         }
       }
+    },
+    [playbackSpeed, stopAndRevokeCurrentAudio]
+  );
+
+  // Instant browser-native speech synthesis fallback (runs 100% locally with 0ms latency)
+  const playBrowserSpeech = useCallback(
+    (text: string, language: "en" | "es", voiceName?: string | null) => {
+      stopAndRevokeCurrentAudio();
+      if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+        return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      speechUtteranceRef.current = utterance;
+
+      const voices = window.speechSynthesis.getVoices();
+      const isSpanish = language === "es";
+      const targetPrefix = isSpanish ? "es" : "en";
+      const prefersFemale =
+        voiceName?.toLowerCase().includes("ada") ||
+        voiceName?.toLowerCase().includes("dalia");
+
+      const matchedVoice =
+        voices.find((v) => {
+          if (!v.lang.toLowerCase().startsWith(targetPrefix)) return false;
+          const name = v.name.toLowerCase();
+          return prefersFemale
+            ? name.includes("female") ||
+                name.includes("dalia") ||
+                name.includes("sabina") ||
+                name.includes("helena")
+            : name.includes("male") ||
+                name.includes("jorge") ||
+                name.includes("george") ||
+                name.includes("david");
+        }) || voices.find((v) => v.lang.toLowerCase().startsWith(targetPrefix));
+
+      if (matchedVoice) {
+        utterance.voice = matchedVoice;
+      }
+      utterance.lang = isSpanish ? "es-MX" : "en-GB";
+      utterance.rate = playbackSpeed * 1.05;
+      utterance.pitch = 1.05;
+
+      const words = text.split(/\s+/).filter(Boolean).length;
+      const estimatedSec = Math.max(10, Math.round(words / 2.6));
+      setDuration(estimatedSec);
+      setCurrentTime(0);
+
+      utterance.onstart = () => {
+        setIsPlaying(true);
+        const start = Date.now();
+        if (speechTickerRef.current)
+          window.clearInterval(speechTickerRef.current);
+        speechTickerRef.current = window.setInterval(() => {
+          const elapsed = ((Date.now() - start) / 1000) * playbackSpeed;
+          setCurrentTime(Math.min(estimatedSec, Math.floor(elapsed)));
+        }, 250);
+      };
+
+      utterance.onend = () => {
+        setIsPlaying(false);
+        setCurrentTime(estimatedSec);
+        if (speechTickerRef.current) {
+          window.clearInterval(speechTickerRef.current);
+          speechTickerRef.current = null;
+        }
+      };
+
+      utterance.onerror = () => {
+        setIsPlaying(false);
+        if (speechTickerRef.current) {
+          window.clearInterval(speechTickerRef.current);
+          speechTickerRef.current = null;
+        }
+      };
+
+      window.speechSynthesis.speak(utterance);
     },
     [playbackSpeed, stopAndRevokeCurrentAudio]
   );
@@ -488,11 +591,14 @@ export const Dashboard: React.FC = () => {
             setIsSynthesizing(false);
             if (audioRes.audioUrl) {
               playFreshAudioDataUrl(audioRes.audioUrl);
+            } else {
+              playBrowserSpeech(res.story, lang, audioRes.voice);
             }
           } catch (audioErr) {
-            console.error("Full-time summary audio error:", audioErr);
+            console.warn("Full-time summary audio fallback to native speech:", audioErr);
             if (myGenId === generationIdRef.current) {
               setIsSynthesizing(false);
+              playBrowserSpeech(res.story, lang, res.voice);
             }
           }
         }
@@ -509,6 +615,7 @@ export const Dashboard: React.FC = () => {
       length,
       match?.matchId,
       mode,
+      playBrowserSpeech,
       playFreshAudioDataUrl,
       stopAndRevokeCurrentAudio,
       unlockAudioElementOnGesture,
@@ -531,8 +638,16 @@ export const Dashboard: React.FC = () => {
       }
 
       setIsGenerating(true);
-      setStatusBadgeText("Generating Live AI Catch-Up...");
-      setTranscriptLine("Generating your live personalized match recap...");
+      setStatusBadgeText(
+        lang === "es"
+          ? "Generando Resumen Catch-Up con IA..."
+          : "Generating Live AI Catch-Up..."
+      );
+      setTranscriptLine(
+        lang === "es"
+          ? "Generando tu resumen de partido en vivo..."
+          : "Generating your live personalized match recap..."
+      );
 
       const activeMatchId = match?.matchId ?? "PL2027-001";
       const targetCurrentMin = match?.currentMinute ?? 90;
@@ -540,6 +655,9 @@ export const Dashboard: React.FC = () => {
         stoppedMinute,
         Math.max(1, targetCurrentMin - 1)
       );
+
+      // Lock the generating window immediately so the button display NEVER drifts or updates
+      setGeneratingWindow({ stopped: clampedStopped, current: targetCurrentMin });
 
       let res: CatchUpResponse;
       try {
@@ -559,11 +677,18 @@ export const Dashboard: React.FC = () => {
         if (myGenId === generationIdRef.current) {
           setIsGenerating(false);
           setIsSynthesizing(false);
+          setGeneratingWindow(null);
           const msg = err instanceof Error ? err.message : String(err);
-          setStatusBadgeText("Catch-Up Request Failed");
+          setStatusBadgeText(
+            lang === "es"
+              ? "Error en Solicitud Catch-Up"
+              : "Catch-Up Request Failed"
+          );
           setTranscriptLine(`Catch-Up error: ${msg}`);
         }
         return;
+      } finally {
+        setGeneratingWindow(null);
       }
 
       if (myGenId !== generationIdRef.current) return;
@@ -571,7 +696,9 @@ export const Dashboard: React.FC = () => {
       setCatchUp(res);
       setIsGenerating(false);
       setStatusBadgeText(
-        `Synced to ${clampedStopped}'–${targetCurrentMin}' Window`
+        lang === "es"
+          ? `Sincronizado a ventana ${clampedStopped}'–${targetCurrentMin}'`
+          : `Synced to ${clampedStopped}'–${targetCurrentMin}' Window`
       );
 
       const assignedSpeaker =
@@ -596,7 +723,11 @@ export const Dashboard: React.FC = () => {
       // Step 2: Synthesize & auto-play audio
       if (autoPlayAudio && narrationScript) {
         setIsSynthesizing(true);
-        setStatusBadgeText("Synthesizing British AI Audio...");
+        setStatusBadgeText(
+          lang === "es"
+            ? "Sintetizando Audio AI en Español..."
+            : "Synthesizing British AI Audio..."
+        );
         try {
           const audioRes = await synthesizeAudio({
             text: narrationScript,
@@ -607,7 +738,9 @@ export const Dashboard: React.FC = () => {
           if (myGenId !== generationIdRef.current) return;
           setIsSynthesizing(false);
           setStatusBadgeText(
-            `Synced to ${clampedStopped}'–${targetCurrentMin}' Window`
+            lang === "es"
+              ? `Sincronizado a ventana ${clampedStopped}'–${targetCurrentMin}'`
+              : `Synced to ${clampedStopped}'–${targetCurrentMin}' Window`
           );
 
           if (audioRes.voice) {
@@ -617,14 +750,19 @@ export const Dashboard: React.FC = () => {
           }
           if (audioRes.audioUrl) {
             playFreshAudioDataUrl(audioRes.audioUrl);
+          } else {
+            playBrowserSpeech(narrationScript, lang, audioRes.voice);
           }
         } catch (audioErr) {
-          console.error("Error in synthesizeAudio:", audioErr);
+          console.warn("Cloud audio fallback to native speech:", audioErr);
           if (myGenId === generationIdRef.current) {
             setIsSynthesizing(false);
             setStatusBadgeText(
-              `Synced to ${clampedStopped}'–${targetCurrentMin}' Window`
+              lang === "es"
+                ? `Sincronizado a ventana ${clampedStopped}'–${targetCurrentMin}'`
+                : `Synced to ${clampedStopped}'–${targetCurrentMin}' Window`
             );
+            playBrowserSpeech(narrationScript, lang, res.voice);
           }
         }
       }
@@ -635,6 +773,7 @@ export const Dashboard: React.FC = () => {
       length,
       match,
       mode,
+      playBrowserSpeech,
       playFreshAudioDataUrl,
       stopAndRevokeCurrentAudio,
       stoppedMinute,
@@ -677,16 +816,35 @@ export const Dashboard: React.FC = () => {
       setIsSynthesizing(false);
       if (audioRes.audioUrl) {
         playFreshAudioDataUrl(audioRes.audioUrl);
+      } else {
+        playBrowserSpeech(narrationScript, lang, nextVoice);
       }
     } catch (err) {
-      console.error("Failed to switch speaker audio:", err);
+      console.warn("Failed to switch speaker audio via cloud, falling back to native speech:", err);
       if (myGenId === generationIdRef.current) {
         setIsSynthesizing(false);
+        playBrowserSpeech(narrationScript, lang, nextVoice);
       }
     }
   };
 
   const handleTogglePlay = () => {
+    // If Web Speech API is speaking or paused
+    if (
+      typeof window !== "undefined" &&
+      "speechSynthesis" in window &&
+      window.speechSynthesis.speaking
+    ) {
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+        setIsPlaying(true);
+      } else {
+        window.speechSynthesis.pause();
+        setIsPlaying(false);
+      }
+      return;
+    }
+
     const audio = audioRef.current;
     if (
       !audio ||
@@ -742,6 +900,7 @@ export const Dashboard: React.FC = () => {
         subSeconds={subSeconds}
         status={match?.status}
         onResetSimulation={handleInitializeOrResetSimulation}
+        onChangeLanguage={handleGlobalLanguageChange}
       />
 
       {/* Main Container */}
@@ -777,7 +936,7 @@ export const Dashboard: React.FC = () => {
               <div className="flex flex-wrap items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-200">
                 <div className="flex items-center gap-3">
                   <span className="px-3 py-1 rounded-md bg-emerald-600 text-white font-mono text-xs font-extrabold uppercase tracking-wider shadow-sm">
-                    FULL TIME • 90&apos;
+                    {t.dashboard.fullTimeBanner.title}
                   </span>
                   <div>
                     <h2 className="text-xl sm:text-2xl font-display font-black uppercase tracking-wide text-slate-900">
@@ -805,10 +964,10 @@ export const Dashboard: React.FC = () => {
                     <BallIcon className="w-4 h-4 text-white shrink-0" />
                     <span>
                       {isGeneratingSummary
-                        ? "Generating 90' Match Summary..."
+                        ? t.dashboard.fullTimeBanner.generatingBtn
                         : fullTimeSummary
-                          ? "Regenerate 90' Match Summary & Audio"
-                          : "Generate Full-Time Match Summary & Audio"}
+                          ? t.dashboard.fullTimeBanner.generateBtn + " ↻"
+                          : t.dashboard.fullTimeBanner.generateBtn}
                     </span>
                     <HeadphonesIcon className="w-4 h-4 text-white shrink-0" />
                   </button>
@@ -885,7 +1044,8 @@ export const Dashboard: React.FC = () => {
             bias={bias}
             length={length}
             lang={lang}
-            isGenerating={isGenerating || isSynthesizing}
+            isGenerating={isGenerating}
+            generatingWindow={generatingWindow}
             onChangeStoppedMinute={setStoppedMinute}
             onChangeMode={setMode}
             onChangeBias={setBias}

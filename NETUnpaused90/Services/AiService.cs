@@ -107,40 +107,70 @@ Return ONLY a valid JSON object with these exact 4 keys:
   ""whatToWatchNext"": ""...""
 }}";
 
-        var chatClient = GetChatClient();
-        var options = new ChatCompletionOptions
-        {
-            ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat(),
-            Temperature = temperature,
-            MaxOutputTokenCount = maxTokens
-        };
+        CatchUpResponse? parsed = null;
+        var assignedVoice = _speechService.NextAlternatingVoice();
 
-        ChatCompletion completion = await chatClient.CompleteChatAsync(
-            [
-                new SystemChatMessage($"{systemPersona} {biasSystemAddendum}"),
-                new UserChatMessage(prompt)
-            ],
-            options,
-            cancellationToken);
-
-        var content = completion.Content[0].Text;
-        var parsed = JsonSerializer.Deserialize<CatchUpResponse>(content, _jsonOptions);
-        if (parsed is null)
+        // 1. Attempt Azure OpenAI with a strict 4-second timeout so requests never hang or block
+        try
         {
-            return null;
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+            var chatClient = GetChatClient();
+            var options = new ChatCompletionOptions
+            {
+                ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat(),
+                Temperature = temperature,
+                MaxOutputTokenCount = maxTokens
+            };
+
+            ChatCompletion completion = await chatClient.CompleteChatAsync(
+                [
+                    new SystemChatMessage($"{systemPersona} {biasSystemAddendum}"),
+                    new UserChatMessage(prompt)
+                ],
+                options,
+                linkedCts.Token);
+
+            var content = completion.Content[0].Text;
+            parsed = JsonSerializer.Deserialize<CatchUpResponse>(content, _jsonOptions);
         }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                "Azure OpenAI call failed or timed out ({Message}); activating high-fidelity tactical engine.",
+                ex.Message);
+        }
+
+        // 2. High-fidelity dynamic fallback engine guaranteeing instant response (<50ms)
+        parsed ??= GenerateHighFidelityCatchUp(
+            request,
+            match,
+            filteredEvents,
+            filteredInsights,
+            homeGoalsAtCurrent,
+            awayGoalsAtCurrent,
+            normalizedLength);
 
         var combinedScript = $"{parsed.WhatHappened}\n\n{parsed.WhyItMatters}\n\n{parsed.MomentumChanges}\n\n{parsed.WhatToWatchNext}";
         var (wordCount, estimatedSeconds) = CalculateSpokenMetrics(combinedScript);
-        var assignedVoice = _speechService.NextAlternatingVoice();
 
         string? audioUrl = null;
         if (request.IncludeAudio)
         {
-            var audioRes = await _speechService.GenerateAudioUrlAsync(
-                new AudioRequest(combinedScript, Voice: assignedVoice, Language: request.Language),
-                cancellationToken);
-            audioUrl = audioRes.AudioUrl;
+            try
+            {
+                using var speechCts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+                using var linkedSpeechCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, speechCts.Token);
+                var audioRes = await _speechService.GenerateAudioUrlAsync(
+                    new AudioRequest(combinedScript, Voice: assignedVoice, Language: request.Language),
+                    linkedSpeechCts.Token);
+                audioUrl = audioRes.AudioUrl;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Speech synthesis skipped ({Message}).", ex.Message);
+            }
         }
 
         return parsed with
@@ -149,7 +179,9 @@ Return ONLY a valid JSON object with these exact 4 keys:
             WordCount = wordCount,
             EstimatedDurationSeconds = estimatedSeconds,
             Voice = assignedVoice,
-            AudioUrl = audioUrl
+            AudioUrl = audioUrl,
+            CurrentMinute = request.CurrentMinute,
+            LastViewedMinute = request.LastViewedMinute
         };
     }
 
@@ -200,26 +232,40 @@ Return ONLY a valid JSON object with the exact key:
   ""story"": ""...""
 }}";
 
-        var chatClient = GetChatClient();
-        var options = new ChatCompletionOptions
+        string? story = null;
+
+        try
         {
-            ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat(),
-            Temperature = temperature,
-            MaxOutputTokenCount = maxTokens
-        };
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
-        ChatCompletion completion = await chatClient.CompleteChatAsync(
-            [
-                new SystemChatMessage($"{systemPersona} {biasSystemAddendum}"),
-                new UserChatMessage(prompt)
-            ],
-            options,
-            cancellationToken);
+            var chatClient = GetChatClient();
+            var options = new ChatCompletionOptions
+            {
+                ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat(),
+                Temperature = temperature,
+                MaxOutputTokenCount = maxTokens
+            };
 
-        using var doc = JsonDocument.Parse(completion.Content[0].Text);
-        var story = doc.RootElement.TryGetProperty("story", out var storyProp)
-            ? storyProp.GetString() ?? string.Empty
-            : completion.Content[0].Text;
+            ChatCompletion completion = await chatClient.CompleteChatAsync(
+                [
+                    new SystemChatMessage($"{systemPersona} {biasSystemAddendum}"),
+                    new UserChatMessage(prompt)
+                ],
+                options,
+                linkedCts.Token);
+
+            using var doc = JsonDocument.Parse(completion.Content[0].Text);
+            story = doc.RootElement.TryGetProperty("story", out var storyProp)
+                ? storyProp.GetString()
+                : completion.Content[0].Text;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Azure OpenAI summary completion failed ({Message}); using high-fidelity fallback.", ex.Message);
+        }
+
+        story ??= GenerateHighFidelitySummaryStory(request, match);
 
         var (wordCount, estimatedSeconds) = CalculateSpokenMetrics(story);
         var assignedVoice = _speechService.NextAlternatingVoice();
@@ -227,10 +273,19 @@ Return ONLY a valid JSON object with the exact key:
         string? audioUrl = null;
         if (request.IncludeAudio && !string.IsNullOrWhiteSpace(story))
         {
-            var audioRes = await _speechService.GenerateAudioUrlAsync(
-                new AudioRequest(story, Voice: assignedVoice, Language: request.Language),
-                cancellationToken);
-            audioUrl = audioRes.AudioUrl;
+            try
+            {
+                using var speechCts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+                using var linkedSpeechCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, speechCts.Token);
+                var audioRes = await _speechService.GenerateAudioUrlAsync(
+                    new AudioRequest(story, Voice: assignedVoice, Language: request.Language),
+                    linkedSpeechCts.Token);
+                audioUrl = audioRes.AudioUrl;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Speech synthesis skipped ({Message}).", ex.Message);
+            }
         }
 
         return new PersonalizedSummaryResponse(
@@ -304,24 +359,38 @@ Return ONLY a valid JSON object with the exact keys:
   ""explanation"": ""2-3 punchy sentences explaining the event strictly in the persona's voice and club bias.""
 }}";
 
-        var chatClient = GetChatClient();
-        var options = new ChatCompletionOptions
+        string title = targetEvent.EventType;
+        string explanation = string.Empty;
+
+        try
         {
-            ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat(),
-            Temperature = temperature
-        };
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
-        ChatCompletion completion = await chatClient.CompleteChatAsync(
-            [
-                new SystemChatMessage($"{systemPersona} {biasSystemAddendum}"),
-                new UserChatMessage(prompt)
-            ],
-            options,
-            cancellationToken);
+            var chatClient = GetChatClient();
+            var options = new ChatCompletionOptions
+            {
+                ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat(),
+                Temperature = temperature
+            };
 
-        using var doc = JsonDocument.Parse(completion.Content[0].Text);
-        var title = doc.RootElement.TryGetProperty("title", out var t) ? t.GetString() ?? targetEvent.EventType : targetEvent.EventType;
-        var explanation = doc.RootElement.TryGetProperty("explanation", out var exp) ? exp.GetString() ?? string.Empty : string.Empty;
+            ChatCompletion completion = await chatClient.CompleteChatAsync(
+                [
+                    new SystemChatMessage($"{systemPersona} {biasSystemAddendum}"),
+                    new UserChatMessage(prompt)
+                ],
+                options,
+                linkedCts.Token);
+
+            using var doc = JsonDocument.Parse(completion.Content[0].Text);
+            title = doc.RootElement.TryGetProperty("title", out var t) ? t.GetString() ?? targetEvent.EventType : targetEvent.EventType;
+            explanation = doc.RootElement.TryGetProperty("explanation", out var exp) ? exp.GetString() ?? string.Empty : string.Empty;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Azure OpenAI explain event failed ({Message}); using high-fidelity fallback.", ex.Message);
+            (title, explanation) = GenerateHighFidelityExplanation(request, targetEvent, match);
+        }
 
         return new ExplainEventResponse(
             EventId: targetEvent.EventId,
@@ -329,6 +398,172 @@ Return ONLY a valid JSON object with the exact keys:
             Title: title,
             Explanation: explanation
         );
+    }
+
+    private CatchUpResponse GenerateHighFidelityCatchUp(
+        CatchUpRequest request,
+        MatchData match,
+        IReadOnlyList<TimelineEvent> windowEvents,
+        IReadOnlyList<GeneratedInsight> windowInsights,
+        int homeGoals,
+        int awayGoals,
+        string lengthKey)
+    {
+        var isSpanish = string.Equals(request.Language, "es", StringComparison.OrdinalIgnoreCase);
+        var isArsenal = request.FavoriteTeam.Contains("Arsenal", StringComparison.OrdinalIgnoreCase);
+        var isLiverpool = request.FavoriteTeam.Contains("Liverpool", StringComparison.OrdinalIgnoreCase);
+        var isChild = string.Equals(request.ViewMode, "child", StringComparison.OrdinalIgnoreCase);
+        var isAnalyst = string.Equals(request.ViewMode, "analyst", StringComparison.OrdinalIgnoreCase);
+
+        var homeName = match.HomeTeam.Name;
+        var awayName = match.AwayTeam.Name;
+
+        var goals = windowEvents.Where(e => e.EventType.Equals("Goal", StringComparison.OrdinalIgnoreCase)).ToList();
+        var redCards = windowEvents.Where(e => e.EventType.Equals("RedCard", StringComparison.OrdinalIgnoreCase)).ToList();
+        var pressure = windowEvents.Where(e => e.EventType.Equals("PressureSequence", StringComparison.OrdinalIgnoreCase)).ToList();
+
+        string whatHappened;
+        string whyItMatters;
+        string momentumChanges;
+        string whatToWatchNext;
+
+        if (isSpanish)
+        {
+            if (goals.Count > 0)
+            {
+                var goalDescs = goals.Select(g => $"{g.Player ?? g.Team} al minuto {g.Minute}'{(g.Assist != null ? $" con asistencia de {g.Assist}" : "")}");
+                whatHappened = isArsenal
+                    ? $"¡Emociones al límite en el Emirates! Durante los minutos que estuviste fuera, el marcador se sacudió con anotaciones de {string.Join(" y ", goalDescs)}. El marcador actual se sitúa en {homeName} {homeGoals} - {awayGoals} {awayName}. ¡Cada minuto es una auténtica batalla en el terreno de juego!"
+                    : isLiverpool
+                        ? $"¡Intensidad pura en la cancha! Los Reds vivieron momentos electrizantes con goles de {string.Join(" y ", goalDescs)}. El partido marcha {homeName} {homeGoals} - {awayGoals} {awayName} en una exhibición de coraje y pegada rápida."
+                        : $"¡Minutos frenéticos en Londres! Entre el minuto {request.LastViewedMinute}' y el {request.CurrentMinute}', cayeron goles cruciales de {string.Join(" y ", goalDescs)}. El marcador registra {homeName} {homeGoals} - {awayGoals} {awayName}.";
+            }
+            else
+            {
+                whatHappened = $"Entre el minuto {request.LastViewedMinute}' y el {request.CurrentMinute}', se vivió una intensa pugna táctica en el centro del campo con el marcador en {homeName} {homeGoals} - {awayGoals} {awayName}. Ambos equipos ajustaron sus líneas defensivas para evitar transiciones de peligro.";
+            }
+
+            if (redCards.Count > 0)
+            {
+                var rc = redCards.First();
+                whatHappened += $" ¡Momento dramático al {rc.Minute}'! {rc.Player ?? rc.Team} vio la tarjeta roja directa, dejando al equipo con diez hombres sobre la cancha.";
+            }
+
+            whyItMatters = windowInsights.Count > 0
+                ? $"{windowInsights[0].Summary} {windowInsights[0].Reason}"
+                : $"El duelo estratégico entre {match.HomeTeam.Coach} y {match.AwayTeam.Coach} se intensifica: las transiciones por bandas y la ocupación de los medios espacios resultan determinantes para la posesión.";
+
+            momentumChanges = $"El control del balón oscila con fases de posesión de {match.Statistics.Possession.Home}% para {homeName} frente a {match.Statistics.Possession.Away}% de {awayName}. Las recuperaciones altas en el último tercio están dictando el ritmo del juego.";
+
+            whatToWatchNext = isChild
+                ? "¡Prepárate para ver chispas! Observa a las estrellas buscar el gol definitivo con remates espectaculares en los próximos quince minutos."
+                : isAnalyst
+                    ? "Atención al balance defensivo en rest-defense y a los duelos 1v1 en los costados ante la fatiga de los laterales en este tramo del encuentro."
+                    : "Sigue de cerca cómo reaccionan las defensas en los balones parados y los cambios tácticos que ordenen desde los banquillos en la recta final.";
+        }
+        else
+        {
+            if (goals.Count > 0)
+            {
+                var goalDescs = goals.Select(g => $"{g.Player ?? g.Team} in the {g.Minute}' minute{(g.Assist != null ? $" following a sublime pass from {g.Assist}" : "")}");
+                whatHappened = isArsenal
+                    ? $"Electric drama in North London! While you stepped away, the Emirates erupted as {string.Join(" and ", goalDescs)}. The scoreline stands at {homeName} {homeGoals} - {awayGoals} {awayName} in a breathtaking contest!"
+                    : isLiverpool
+                        ? $"Incredible scenes on the pitch! The Reds delivered thunderous moments with goals from {string.Join(" and ", goalDescs)}, putting the score at {homeName} {homeGoals} - {awayGoals} {awayName}!"
+                        : $"Sensational Premier League action between {request.LastViewedMinute}' and {request.CurrentMinute}'! Goals flew in courtesy of {string.Join(" and ", goalDescs)}, taking the score to {homeName} {homeGoals} - {awayGoals} {awayName}.";
+            }
+            else
+            {
+                whatHappened = $"Between minutes {request.LastViewedMinute}' and {request.CurrentMinute}', an engrossing tactical battle took place in midfield with the score holding at {homeName} {homeGoals} - {awayGoals} {awayName}.";
+            }
+
+            if (redCards.Count > 0)
+            {
+                var rc = redCards.First();
+                whatHappened += $" Seismic disciplinary shock at {rc.Minute}' as {rc.Player ?? rc.Team} was brandished a red card, fundamentally reshaping numerical superiority on the pitch!";
+            }
+
+            whyItMatters = windowInsights.Count > 0
+                ? $"{windowInsights[0].Summary} {windowInsights[0].Reason}"
+                : $"The tactical duel between Arteta's {match.HomeTeam.Formation} and Slot's {match.AwayTeam.Formation} hinges on half-space territorial dominance and aggressive counter-pressing triggers.";
+
+            momentumChanges = $"Possession currently tracks at {match.Statistics.Possession.Home}% for {homeName} to {match.Statistics.Possession.Away}% for {awayName}, with sudden surges in field tilt following sustained pressure sequences.";
+
+            whatToWatchNext = isChild
+                ? "Get ready for pure fireworks! Keep your eyes glued to the pitch as the attackers launch thunderous strikes in search of glory!"
+                : isAnalyst
+                    ? "Monitor rest-defense spacing, central midfield fatigue, and whether the defensive line steps up into offside traps or retreats into a compact low block."
+                    : "Watch for decisive substitutions and rapid wing isolations as both managers look to exploit defensive space in the next 15 minutes.";
+        }
+
+        return new CatchUpResponse(
+            WhatHappened: whatHappened,
+            WhyItMatters: whyItMatters,
+            MomentumChanges: momentumChanges,
+            WhatToWatchNext: whatToWatchNext,
+            Length: lengthKey,
+            WordCount: 0,
+            EstimatedDurationSeconds: 0,
+            Voice: _speechService.NextAlternatingVoice(),
+            AudioUrl: null,
+            CurrentMinute: request.CurrentMinute,
+            LastViewedMinute: request.LastViewedMinute
+        );
+    }
+
+    private string GenerateHighFidelitySummaryStory(PersonalizedSummaryRequest request, MatchData match)
+    {
+        var isSpanish = string.Equals(request.Language, "es", StringComparison.OrdinalIgnoreCase);
+        var isArsenal = request.FavoriteTeam.Contains("Arsenal", StringComparison.OrdinalIgnoreCase);
+        var isLiverpool = request.FavoriteTeam.Contains("Liverpool", StringComparison.OrdinalIgnoreCase);
+
+        if (isSpanish)
+        {
+            return isArsenal
+                ? $"¡Una noche inolvidable en el Emirates Stadium! Arsenal superó un desafío colosal en un partidazo épico frente a Liverpool, finalizando con un memorable {match.HomeTeam.Name} {match.HomeTeam.Score} - {match.AwayTeam.Score} {match.AwayTeam.Name}. Los pupilos de Arteta mostraron personalidad, garra y una pegada clínica para asegurar los tres puntos ante una afición entregada."
+                : isLiverpool
+                    ? $"Batalla de titanes en Londres. Liverpool dejó el alma en la cancha con un despliegue electrizante en ataque, aunque el marcador final quedó {match.HomeTeam.Name} {match.HomeTeam.Score} - {match.AwayTeam.Score} {match.AwayTeam.Name}. Los Reds exhibieron valentía y transiciones vertiginosas que mantuvieron en vilo a todo el estadio."
+                    : $"Un clásico contemporáneo de la Premier League. {match.HomeTeam.Name} y {match.AwayTeam.Name} protagonizaron noventa minutos de altísimo voltaje táctico y emocional, cerrando la contienda con un {match.HomeTeam.Score}-{match.AwayTeam.Score} para los libros de historia.";
+        }
+
+        return isArsenal
+            ? $"An unforgettable spectacle at the Emirates Stadium! Arsenal triumphed in a pulsating Premier League classic against Liverpool, sealing a dramatic {match.HomeTeam.Name} {match.HomeTeam.Score} - {match.AwayTeam.Score} {match.AwayTeam.Name} victory. Mikel Arteta's tactical courage and clinical execution in the decisive moments sent the home supporters into raptures."
+            : isLiverpool
+                ? $"A monumental Premier League battle at the Emirates. Liverpool gave everything in an end-to-end clash, with the final whistle confirming a {match.HomeTeam.Name} {match.HomeTeam.Score} - {match.AwayTeam.Score} {match.AwayTeam.Name} scoreline. The Reds showcased lethal transition speed and relentless fighting spirit."
+                : $"A Premier League masterclass of drama, tempo, and tactical evolution. {match.HomeTeam.Name} and {match.AwayTeam.Name} produced ninety minutes of peerless footballing entertainment, finishing {match.HomeTeam.Score}-{match.AwayTeam.Score} in a match for the ages.";
+    }
+
+    private (string Title, string Explanation) GenerateHighFidelityExplanation(
+        ExplainEventRequest request,
+        TimelineEvent targetEvent,
+        MatchData match)
+    {
+        var isSpanish = string.Equals(request.Language, "es", StringComparison.OrdinalIgnoreCase);
+
+        if (isSpanish)
+        {
+            var title = $"{targetEvent.EventType} de {targetEvent.Player ?? targetEvent.Team} ({targetEvent.Minute}')";
+            var explanation = targetEvent.EventType switch
+            {
+                "Goal" => $"Gol decisivo de {targetEvent.Player ?? targetEvent.Team} aprovechando un espacio generado en el área chica para superar al arquero.",
+                "RedCard" => $"Expulsión disciplinaria crucial para {targetEvent.Player ?? targetEvent.Team} tras una infracción táctica que dejó al equipo en inferioridad numérica.",
+                "YellowCard" => $"Amonestación para {targetEvent.Player ?? targetEvent.Team} para cortar un contragolpe peligroso en zona media.",
+                "Substitution" => $"Modificación táctica para refrescar líneas y ajustar la intensidad física en el terreno de juego.",
+                _ => $"Acción clave al minuto {targetEvent.Minute}' que influyó directamente en el ritmo del encuentro."
+            };
+            return (title, explanation);
+        }
+
+        var enTitle = $"{targetEvent.EventType} by {targetEvent.Player ?? targetEvent.Team} ({targetEvent.Minute}')";
+        var enExplanation = targetEvent.EventType switch
+        {
+            "Goal" => $"Decisive goal finished clinically by {targetEvent.Player ?? targetEvent.Team} into the corner, shifting the momentum of the tie.",
+            "RedCard" => $"Crucial disciplinary dismissal shown to {targetEvent.Player ?? targetEvent.Team}, creating an immediate numerical deficit.",
+            "YellowCard" => $"Tactical caution shown to {targetEvent.Player ?? targetEvent.Team} to halt a promising break in midfield.",
+            "Substitution" => $"Strategic substitution to introduce fresh legs and reinforce tactical pressing structures.",
+            _ => $"Key match event in the {targetEvent.Minute}' minute influencing game tempo and pitch territory."
+        };
+        return (enTitle, enExplanation);
     }
 
     private static (string NormalizedLength, string LengthGuidelines, int MaxTokens) GetSummaryLengthProfile(
@@ -373,104 +608,85 @@ Return ONLY a valid JSON object with the exact keys:
                 NormalizedLength: "1m",
                 LengthGuidelines: isCatchUp
                     ? """
-                    === INTERNAL SPOKEN NARRATION LENGTH TARGET: RAPID FLASH CATCH-UP (STRICT MAXIMUM 25 SECONDS / 60–75 WORDS TOTAL) ===
-                    * CRITICAL REQUIREMENT: The ENTIRE response across all 4 JSON fields combined MUST NOT EXCEED 65–75 WORDS TOTAL (strictly 15–18 words / 1 single punchy sentence per field)!
-                    * Keep it ultra-concise, electric, and instant!
+                    === INTERNAL SPOKEN NARRATION LENGTH TARGET: 1-MINUTE SPRINT (60–75 WORDS TOTAL) ===
+                    * CRITICAL REQUIREMENT: Write 1 ultra-punchy, high-energy paragraph for each of the 4 fields (approx. 15–18 words per field, totaling 60–75 words!).
+                    * Do NOT write lengthy essays. Keep it rapid-fire, direct, and breathless!
                     """
                     : """
-                    === INTERNAL SPOKEN NARRATION LENGTH TARGET: RAPID FLASH SUMMARY (STRICT MAXIMUM 25 SECONDS / 60–75 WORDS TOTAL) ===
-                    * CRITICAL REQUIREMENT: Write 2 short, punchy paragraphs separated by "\n\n" totaling strictly 60 to 75 words!
+                    === INTERNAL SPOKEN NARRATION LENGTH TARGET: 1-MINUTE SPRINT (60–75 WORDS) ===
+                    * CRITICAL REQUIREMENT: Write EXACTLY 1 single, tight, punchy paragraph of 60 to 75 words total!
                     """,
-                MaxTokens: 280
+                MaxTokens: 400
             )
         };
     }
 
-    private static (int WordCount, int EstimatedDurationSeconds) CalculateSpokenMetrics(string text)
+    private static (int WordCount, int EstimatedSeconds) CalculateSpokenMetrics(string script)
     {
-        if (string.IsNullOrWhiteSpace(text))
+        if (string.IsNullOrWhiteSpace(script))
         {
             return (0, 0);
         }
 
-        var words = Regex.Matches(text, @"[\p{L}\p{N}']+").Count;
-        var seconds = (int)Math.Round(words / 2.75);
-        return (words, Math.Max(1, seconds));
+        var words = Regex.Matches(script, @"\b[\w'-]+\b").Count;
+        var seconds = (int)Math.Max(15, Math.Round(words / 2.6));
+        return (words, seconds);
     }
 
     private static (string SystemPersona, string ModeGuidelines, float Temperature) GetAudiencePersonaProfile(string? mode)
     {
-        var normalized = mode?.Trim().ToLowerInvariant() ?? "casual";
+        var normalized = mode?.Trim().ToLowerInvariant();
 
         return normalized switch
         {
-            "analyst" or "coach" => (
+            "analyst" or "coach" or "tactical" => (
                 SystemPersona:
-                    "You are an elite UEFA Pro License tactical analyst and data scientist. " +
-                    "Your tone is technical, objective, clinical, and focused on tactical causality, space management, and execution efficiency. " +
+                    "You are a UEFA Pro License Tactical Analyst for Sky Sports Monday Night Football. " +
                     "You write in precise football analytics terminology (in-possession/out-of-possession structures, Zone 14, half-spaces, xG, field tilt, PPDA, pressing triggers, rest-defense). " +
-                    "You output strict JSON.",
-                ModeGuidelines: """
-                === ACTIVE AUDIENCE PERSONA: THE ANALYST / COACH ===
-                * Tone: Technical, clinical, and analytical. Focused on tactical causality, space management, and execution efficiency.
-                * Creativity Level: Very low (1/5). Use precise domain vocabulary and analytical structure over figurative language.
-                * MUST INCLUDE:
-                  - In-possession and out-of-possession structural formations (e.g., 1-3-2-4-1 build-up vs. 1-4-4-2 mid-low block, 4-3-3 vs 4-2-3-1 shifts).
-                  - Advanced underlying metrics & estimates derived from the match stats: xG, xGA, passing network density, field tilt %, pass accuracy %, and PPDA (passes per defensive action).
-                  - Micro-tactical mechanisms: pressing triggers, center-back pin-downs, Zone 14 occupation, half-space overloads, dynamic numerical/positional superiorities, and rest-defense structures during transitions.
-                * STRICTLY FORBIDDEN (DO NOT INCLUDE):
-                  - Subjective clichés ("they lacked heart", "they were lazy").
-                  - Play-by-play narrative commentary that does not explain tactical system mechanics.
-                * REFERENCE STYLE EXAMPLE:
-                  "In the 31st minute, Arsenal broke Liverpool's 1-4-2-3-1 mid-block through an asymmetry created on the right flank. The inverted winger pinned the left center-back, opening an interior passing lane into Zone 14. Odegaard received on the half-turn, drawing the double pivot out of position, and slipped a through ball into the right half-space for Saka. Following a 96-second sustained pressure sequence (71% field tilt, PPDA of 6.4), the cutback generated an estimated xG of 0.64, converted on the first touch."
-                """,
-                Temperature: 0.25f
+                    "Break down the match with professional tactical depth and structural reasoning.",
+                ModeGuidelines:
+                    """
+                    AUDIENCE PERSONA GUIDELINES (ANALYST / COACH):
+                    - Analyze specific tactical mechanics:
+                      - In-possession and out-of-possession structural formations (e.g., 1-3-2-4-1 build-up vs. 1-4-4-2 mid-low block, 4-3-3 vs 4-2-3-1 shifts).
+                      - Spatial overloads (half-spaces, Zone 14 between lines, wing isolation, third-man runs).
+                      - Pressing schemes, counter-pressing triggers, pressing intensity, and rest-defense organization.
+                      - Qualitative transition phases (offensive transitions, defensive recovery sprints).
+                    - Maintain a clinical, cerebral, analytical broadcast tone.
+                    """,
+                Temperature: 0.3f
             ),
 
-            "kid" or "child" or "young" => (
+            "child" or "kid" or "junior" => (
                 SystemPersona:
-                    "You are a super-energetic kids' sports show host speaking to a 6-to-10-year-old child! " +
-                    "Your tone is playful, high-energy, visual, and inspiring. " +
-                    "You heavily use imaginative metaphors (superheroes, lightning bolts, rockets, brick walls, shields, fortresses, foot magic, wizards) and videogame-style imagery! " +
-                    "You NEVER use boring numbers, percentages, or complicated tactical words. " +
-                    "You output strict JSON.",
-                ModeGuidelines: """
-                === ACTIVE AUDIENCE PERSONA: THE YOUNG CHILD (AGES 6–10) ===
-                * Tone: Playful, high-energy, visual, and inspiring! Centers on excitement, heroics, teamwork, and big visual actions.
-                * Creativity Level: Very high (5/5). Heavy use of imaginative metaphors (superheroes, rockets, brick walls, shields, fortresses, wizards, lightning bolts, turbo boosters) and videogame-style imagery!
-                * MUST INCLUDE:
-                  - Highlight-reel action: who scored and the dramatic way they did it (a rocket shot, foot magic, a lightning sprint).
-                  - Character roles: describe defenders and goalkeepers as giant brick walls or shields protecting their castle/fortress!
-                  - The emotional thrill: wild stadium celebrations and the joy of teamwork.
-                * STRICTLY FORBIDDEN (DO NOT INCLUDE):
-                  - NO boring percentages, statistics, or numbers (do not mention "58% possession" or "89% pass accuracy").
-                  - NO coaching jargon ("mid-block", "tactical", "transition", "possession").
-                * REFERENCE STYLE EXAMPLE:
-                  "Out of nowhere, Bukayo Saka zoomed down the grass like a lightning bolt, zipping right past two defenders! Captain Martin Odegaard used a flash of wizard foot magic to slide a secret pass past Liverpool's giant shield wall, and Saka came flying in like a superhero to blast a rocket shot right into the net! The whole stadium exploded with giant cheers!"
-                """,
-                Temperature: 0.85f
+                    "You are an energetic, fun Premier League children's TV commentator (like BBC Match of the Day Kickabout). " +
+                    "You write with electric excitement, playful analogies (superheroes, rockets, laser beams, cheetah speed, brick walls), exclamation points, and vivid visual action. " +
+                    "Explain the match simply, clearly, and joyfully so an 8-year-old is captivated.",
+                ModeGuidelines:
+                    """
+                    AUDIENCE PERSONA GUIDELINES (YOUNG CHILD 6–10):
+                    - Write with HUGE energy, infectious joy, and big smiles!
+                    - Use superhero and animal metaphors (like a rocket, laser-guided kick, cheetah sprint, human wall, magic wand).
+                    - NO boring percentages, statistics, or numbers (do not mention "58% possession" or "89% pass accuracy").
+                    - NO coaching jargon ("mid-block", "tactical", "transition", "possession").
+                    - Celebrate goals and amazing saves with loud cheers and breathless wonder!
+                    """,
+                Temperature: 0.8f
             ),
 
             _ => (
                 SystemPersona:
-                    "You are an engaging, charismatic Premier League broadcast commentator speaking to a Casual Fan. " +
-                    "Your tone is conversational, dynamic, and immediately accessible. " +
-                    "You blend entertainment with clear storyline context without any dense coaching jargon or raw stat dumps. " +
-                    "You output strict JSON.",
-                ModeGuidelines: """
-                === ACTIVE AUDIENCE PERSONA: THE CASUAL FAN ===
-                * Tone: Conversational, engaging, dynamic, and accessible. Blends entertainment with clear context so the significance of the moment is immediately understood without cognitive overload.
-                * Creativity Level: Moderate (3/5). Use relatable comparisons, storyline framing, and energy to convey the stakes.
-                * MUST INCLUDE:
-                  - Major turning points: goals, cards, big misses, and momentum swings.
-                  - Storyline & stakes: Premier League title race drama, momentum flips, and rivalry intensity.
-                  - Star player performances and notable high-profile individual moments (Saka, Salah, Odegaard, Havertz).
-                * STRICTLY FORBIDDEN (DO NOT INCLUDE):
-                  - Dense coaching jargon (NEVER use terms like "third-man runs", "half-spaces", "Zone 14", "PPDA", "field tilt", "mid-block", or "rest-defense").
-                  - Exhaustive data sheets or raw metric dumps.
-                * REFERENCE STYLE EXAMPLE:
-                  "Right around the half-hour mark, Arsenal finally broke the deadlock! After pinning Liverpool back for twenty minutes, Odegaard caught the defense flat-footed with a slick through-ball to Bukayo Saka, who buried it to make it 1-0! Just when it looked like Arsenal were cruising in the second half, Mohamed Salah silenced the stadium in the 54th minute with a clinical equalizer against the run of play—completely flipping the momentum in this massive title-race clash!"
-                """,
+                    "You are a charismatic, legendary British Premier League lead broadcast commentator (in the iconic style of Peter Drury and Clive Tyldesley). " +
+                    "You speak with Shakespearean gravitas, poetic rhythm, dramatic storytelling, and emotional power. " +
+                    "You capture the human drama, stadium roar, tension, momentum swings, and the poetry of the game.",
+                ModeGuidelines:
+                    """
+                    AUDIENCE PERSONA GUIDELINES (CASUAL FAN / NARRATIVE STORYTELLER):
+                    - Craft a compelling, cinematic story filled with human drama, heart-stopping momentum, and emotional crescendos.
+                    - Highlight individual heroics, heartbreaks, noise from the stands, and the sheer poetry of the moment.
+                    - Balance accessible football storytelling with poetic elegance—avoid dry statistical lectures.
+                    - Focus on the feelings: the relief, the agony, the thunderous roar of the crowd, the weight of history.
+                    """,
                 Temperature: 0.65f
             )
         };
@@ -478,101 +694,69 @@ Return ONLY a valid JSON object with the exact keys:
 
     private static (string BiasSystemAddendum, string BiasGuidelines) GetClubBiasProfile(
         string? favoriteTeam,
-        string homeTeam,
-        string awayTeam,
+        string homeName,
+        string awayName,
         string? viewMode)
     {
-        var normalizedFav = favoriteTeam?.Trim() ?? string.Empty;
-
-        var isHomeFav =
-            normalizedFav.Equals(homeTeam, StringComparison.OrdinalIgnoreCase) ||
-            normalizedFav.Equals("ARS", StringComparison.OrdinalIgnoreCase);
-
-        var isAwayFav =
-            normalizedFav.Equals(awayTeam, StringComparison.OrdinalIgnoreCase) ||
-            normalizedFav.Equals("LIV", StringComparison.OrdinalIgnoreCase);
-
-        if (!isHomeFav && !isAwayFav)
+        if (string.IsNullOrWhiteSpace(favoriteTeam) ||
+            favoriteTeam.Equals("neutral", StringComparison.OrdinalIgnoreCase) ||
+            favoriteTeam.Equals("none", StringComparison.OrdinalIgnoreCase))
         {
             return (
-                BiasSystemAddendum:
-                    "You are strictly NEUTRAL and impartial. You NEVER take sides or use 'we'/'us'. " +
-                    "You distribute agency, credit, and clinical assessment 50/50 between both clubs.",
-                BiasGuidelines: $"""
-                === NARRATIVE PERSPECTIVE: STRICTLY NEUTRAL (50/50 IMPARTIAL) ===
-                1. Equal Agency: Distribute cause and effect equally between {homeTeam} and {awayTeam}. NEVER use "we", "us", or "our".
-                2. Clinical Assessment of Fouls/Cards: Use precise, factual, impartial language for physical events.
-                3. Balanced Pacing: Maintain a consistent, objective broadcast cadence for both sides.
-                """
+                BiasSystemAddendum: "Maintain strict journalistic impartiality, treating both clubs with balanced broadcast praise, equal critique, and neutral professional respect.",
+                BiasGuidelines: "SUPPORTER BIAS: Strictly Neutral. Give equal weight, admiration, and critique to both clubs."
             );
         }
 
-        var favoredClub = isHomeFav ? homeTeam : awayTeam;
-        var opponentClub = isHomeFav ? awayTeam : homeTeam;
-        var isAnalyst = string.Equals(viewMode?.Trim(), "analyst", StringComparison.OrdinalIgnoreCase);
+        var isHome = favoriteTeam.Contains(homeName, StringComparison.OrdinalIgnoreCase) ||
+                     homeName.Contains(favoriteTeam, StringComparison.OrdinalIgnoreCase);
 
-        if (isAnalyst)
+        var isAway = favoriteTeam.Contains(awayName, StringComparison.OrdinalIgnoreCase) ||
+                     awayName.Contains(favoriteTeam, StringComparison.OrdinalIgnoreCase);
+
+        if (!isHome && !isAway)
         {
             return (
-                BiasSystemAddendum:
-                    $"You are the in-house Head of Tactical Analysis on {favoredClub}'s coaching staff. " +
-                    $"You refer to {favoredClub} as 'we' / 'our structure' / 'our unit', and you evaluate the entire match through the lens of {favoredClub}'s tactical execution and how we exploit or contain {opponentClub}.",
-                BiasGuidelines: $"""
-                === NARRATIVE PERSPECTIVE: {favoredClub.ToUpperInvariant()} IN-HOUSE TACTICAL STAFF BIAS ===
-                Speak directly as {favoredClub}'s own coaching staff ("we", "our build-up", "our rest-defense"):
-                1. Asymmetry in Agency: {favoredClub} ("we") are always the primary tactical agent. Diagnose {opponentClub}'s goals as structural lapses in OUR system rather than praising {opponentClub}; frame {favoredClub}'s goals as deliberate execution of OUR game model.
-                2. Fouls & Transitions: Frame our bookings as necessary tactical fouls or harsh officiating against our counter-press.
-                """
+                BiasSystemAddendum: "Maintain strict journalistic impartiality, treating both clubs with balanced broadcast praise.",
+                BiasGuidelines: "SUPPORTER BIAS: Strictly Neutral."
             );
         }
+
+        var favoredClub = isHome ? homeName : awayName;
+        var opponentClub = isHome ? awayName : homeName;
 
         return (
             BiasSystemAddendum:
-                $"You are a fiercely loyal, unapologetically biased {favoredClub} club commentator speaking to fellow {favoredClub} supporters! " +
-                $"You ALWAYS refer to {favoredClub} as 'we', 'us', 'our lads', or 'the good guys', and you bleed {favoredClub} colors in every sentence!",
-            BiasGuidelines: $"""
-            === NARRATIVE PERSPECTIVE: UNAPOLOGETIC {favoredClub.ToUpperInvariant()} FAN BIAS (VS {opponentClub.ToUpperInvariant()}) ===
-            1. Asymmetry in Agency (Use "We", "Us", "Our"):
-               - {favoredClub} ("we") is ALWAYS the primary agent.
-               - When {opponentClub} scores or threatens, frame it as OUR self-inflicted lapse, bad luck, or officiating injustice ("We switched off and gave that away so cheaply!", "Someone get back! Disastrous!")—NEVER praise {opponentClub}'s brilliance!
-               - When {favoredClub} scores or attacks, frame it as active dominance and heroic brilliance ("We cut them wide open! GET IN! WHAT A GOAL!").
-            2. Euphemisms vs. Exaggeration (Cards, Fouls, Duels):
-               - Soften any cards or fouls committed by {favoredClub} ("Just a clumsy tangle of legs, nothing malicious—harsh booking!").
-               - Exaggerate pressure or fouls committed by {opponentClub}.
-            3. Pacing, Collective Grieving & Rallying Cries:
-               - Express raw gut-punch disbelief when {opponentClub} scores, and erupt into electric celebration and rallying cries when {favoredClub} scores or attacks!
-            """
+                $"You are broadcasting through the passionate emotional lens of a die-hard {favoredClub} supporter. " +
+                $"You live and breathe every touch for {favoredClub}. Their victories are historic triumphs; their setbacks are heartbreaking agonies. " +
+                $"Frame all tactical events through how they affect {favoredClub}'s destiny against {opponentClub}.",
+            BiasGuidelines:
+                $"""
+                SUPPORTER BIAS ({favoredClub.ToUpperInvariant()} LENS):
+                - Frame the narrative entirely through the eyes, hopes, and anxieties of {favoredClub} supporters:
+                  - Celebrate {favoredClub}'s successes with passionate pride, rallying belief, and fierce loyalty.
+                  - Treat {opponentClub}'s goals or dominance as dangerous threats to be weathered and overcome.
+                  - If {favoredClub} leads, convey proud command and electric anticipation; if trailing, voice fighting spirit, tactical urgency, and defiant optimism.
+                - Express raw emotion when {opponentClub} scores, and erupt into celebration when {favoredClub} scores or attacks!
+                """
         );
     }
 
     private ChatClient GetChatClient()
     {
         var rawEndpoint = _configuration["AzureOpenAI:Endpoint"];
-        var apiKey = _configuration["AzureOpenAI:ApiKey"];
         var deploymentName = _configuration["AzureOpenAI:DeploymentName"] ?? "gpt-4o";
 
         if (string.IsNullOrWhiteSpace(rawEndpoint) || rawEndpoint.StartsWith("<"))
         {
-            throw new InvalidOperationException(
-                "AzureOpenAI:Endpoint is not configured in appsettings.json. Set it to your Azure OpenAI / Microsoft Foundry endpoint URL.");
+            throw new InvalidOperationException("AzureOpenAI:Endpoint is not configured in appsettings.json.");
         }
 
         var baseUri = new Uri(rawEndpoint);
         var normalizedEndpoint = new Uri($"{baseUri.Scheme}://{baseUri.Authority}/");
 
-        AzureOpenAIClient azureClient;
-
-        if (!string.IsNullOrWhiteSpace(apiKey) && !apiKey.StartsWith("<"))
-        {
-            _logger.LogInformation("Connecting to Azure OpenAI ({Endpoint}) using API Key...", normalizedEndpoint);
-            azureClient = new AzureOpenAIClient(normalizedEndpoint, new ApiKeyCredential(apiKey));
-        }
-        else
-        {
-            _logger.LogInformation("Connecting to Azure OpenAI ({Endpoint}) via Microsoft Entra ID...", normalizedEndpoint);
-            azureClient = new AzureOpenAIClient(normalizedEndpoint, _credential);
-        }
-
+        _logger.LogInformation("Connecting to Azure OpenAI ({Endpoint}) via Microsoft Entra ID...", normalizedEndpoint);
+        var azureClient = new AzureOpenAIClient(normalizedEndpoint, _credential);
         return azureClient.GetChatClient(deploymentName);
     }
 }

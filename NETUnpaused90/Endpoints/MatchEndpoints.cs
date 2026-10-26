@@ -86,5 +86,28 @@ public static class MatchEndpoints
                 : Results.NotFound(new { error = $"Match '{matchId}' not found." });
         })
         .WithName("GetMatchKeyMoments");
+
+        // GET /api/v1/matches/{matchId}/possession — Dynamic possession state at current simulated minute (or optional ?minute=)
+        group.MapGet("/{matchId}/possession", async (
+            string matchId,
+            int? minute,
+            MatchService matchService,
+            CancellationToken ct) =>
+        {
+            var match = await matchService.GetMatchAsync(matchId, ct, minute);
+            return match is not null
+                ? Results.Ok(new
+                {
+                    matchId = match.MatchId,
+                    minute = match.CurrentMinute,
+                    possession = match.Statistics.Possession,
+                    homeTeam = match.HomeTeam.Name,
+                    awayTeam = match.AwayTeam.Name,
+                    score = $"{match.HomeTeam.Score}-{match.AwayTeam.Score}",
+                    status = match.Status
+                })
+                : Results.NotFound(new { error = $"Match '{matchId}' not found." });
+        })
+        .WithName("GetMatchPossession");
     }
 }

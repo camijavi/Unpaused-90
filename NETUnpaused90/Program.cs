@@ -49,6 +49,7 @@ app.MapGet("/", () => Results.Ok(new
     {
         "GET  /api/v1/matches",
         "GET  /api/v1/matches/PL2027-001",
+        "GET  /api/v1/matches/PL2027-001/possession",
         "GET  /api/v1/matches/PL2027-001/timeline",
         "GET  /api/v1/matches/PL2027-001/insights",
         "POST /api/v1/catchup",

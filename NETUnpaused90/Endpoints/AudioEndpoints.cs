@@ -21,14 +21,25 @@ public static class AudioEndpoints
                 return Results.BadRequest(new { error = "Text is required to generate audio." });
             }
 
+            var isSpanish = string.Equals(request.Language?.Trim(), "es", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(request.Language?.Trim(), "es-ES", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(request.Language?.Trim(), "es-MX", StringComparison.OrdinalIgnoreCase);
+
             try
             {
-                var response = await speechService.GenerateAudioUrlAsync(request, ct);
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+                var response = await speechService.GenerateAudioUrlAsync(request, linkedCts.Token);
                 return Results.Ok(response);
             }
-            catch (Exception ex)
+            catch
             {
-                return Results.Json(new { error = ex.Message }, statusCode: 500);
+                // Graceful fallback response: return 200 OK with AudioUrl = null so client uses native speech without 500 errors
+                return Results.Ok(new AudioResponse(
+                    AudioUrl: null,
+                    Voice: request.Voice ?? (isSpanish ? "es-MX-DaliaNeural" : "en-GB-OllieMultilingualNeural"),
+                    Language: isSpanish ? "es" : "en"
+                ));
             }
         })
         .WithName("GenerateAudio");
@@ -46,7 +57,9 @@ public static class AudioEndpoints
 
             try
             {
-                var (audioBytes, _, _) = await speechService.SynthesizeSpeechBytesAsync(request, ct);
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+                var (audioBytes, _, _) = await speechService.SynthesizeSpeechBytesAsync(request, linkedCts.Token);
                 return Results.File(audioBytes, "audio/mpeg", "unpaused90-recap.mp3");
             }
             catch (Exception ex)

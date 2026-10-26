@@ -167,6 +167,84 @@ export const HeadphonesIcon: React.FC<IconProps> = ({
   </svg>
 );
 
+export const TimerIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    className={className}
+    aria-hidden="true"
+  >
+    <circle cx="12" cy="13" r="8" stroke="currentColor" strokeWidth="2" />
+    <path
+      d="M12 9V13L15 15"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M12 2V5M10 2H14"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+export const GlobeIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    className={className}
+    aria-hidden="true"
+  >
+    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
+    <path
+      d="M3.6 9H20.4M3.6 15H20.4"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+    />
+    <path
+      d="M11.5 3C9 6.5 7.5 9.2 7.5 12C7.5 14.8 9 17.5 11.5 21M12.5 3C15 6.5 16.5 9.2 16.5 12C16.5 14.8 15 17.5 12.5 21"
+      stroke="currentColor"
+      strokeWidth="1.8"
+    />
+  </svg>
+);
+
+export const ChevronDownIcon: React.FC<IconProps> = ({
+  className = "w-4 h-4",
+}) => (
+  <svg
+    viewBox="0 0 20 20"
+    fill="currentColor"
+    className={className}
+    aria-hidden="true"
+  >
+    <path
+      fillRule="evenodd"
+      d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+      clipRule="evenodd"
+    />
+  </svg>
+);
+
+export const CheckIcon: React.FC<IconProps> = ({ className = "w-4 h-4" }) => (
+  <svg
+    viewBox="0 0 20 20"
+    fill="currentColor"
+    className={className}
+    aria-hidden="true"
+  >
+    <path
+      fillRule="evenodd"
+      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+      clipRule="evenodd"
+    />
+  </svg>
+);
+
 export const ArsenalCrest: React.FC<IconProps> = ({
   className = "w-full h-full",
 }) => (

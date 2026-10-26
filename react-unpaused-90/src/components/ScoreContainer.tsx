@@ -19,6 +19,7 @@ import {
   SubIcon,
   YellowCardIcon,
 } from "./Icons";
+import { useLanguage } from "../languages/LanguageContext";
 
 interface ScoreContainerProps {
   match: MatchData | null;
@@ -132,6 +133,7 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
   onTriggerAnimation,
   onSelectTimelineEvent,
 }) => {
+  const { t } = useLanguage();
   const homeCode = match?.homeTeam.teamId ?? "ARS";
   const awayCode = match?.awayTeam.teamId ?? "LIV";
   const homeName = match?.homeTeam.name ?? "Arsenal";
@@ -152,12 +154,12 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
 
   const isFullTime = currentMinute >= 90 || match?.status === "FullTime";
   const statusLabel = isFullTime
-    ? "FULL TIME"
+    ? t.scoreContainer.halves.fullTime.toUpperCase()
     : match?.status === "Half Time" || currentMinute === 45
-      ? "HALF TIME"
+      ? t.scoreContainer.halves.halfTime.toUpperCase()
       : currentMinute < 45
-        ? "1ST HALF"
-        : "2ND HALF";
+        ? t.scoreContainer.halves.firstHalf.toUpperCase()
+        : t.scoreContainer.halves.secondHalf.toUpperCase();
 
   // Derive real goal scorers and disciplinary notes from fetched timeline
   const homeGoals = timeline.filter(
@@ -415,12 +417,27 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
                   {awayScore}
                 </span>
               </div>
-              <span
+              <div
                 id="match-possession"
-                className="mt-3 px-3.5 py-1 rounded-full bg-slate-900/85 backdrop-blur-md border border-white/20 text-xs font-mono font-bold text-white shadow"
+                className="mt-3 px-3.5 py-1.5 rounded-full bg-slate-900/85 backdrop-blur-md border border-white/20 text-xs font-mono font-bold text-white shadow flex items-center gap-2.5"
               >
-                POSSESSION: {possessionHome}% – {possessionAway}%
-              </span>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+                <span>
+                  {t.scoreContainer.possession} <strong className="text-white">{possessionHome}%</strong> – <strong className="text-white">{possessionAway}%</strong>
+                </span>
+                <div className="w-16 h-2 bg-slate-700/80 rounded-full overflow-hidden flex border border-white/10 shrink-0">
+                  <div
+                    className="bg-red-500 h-full transition-all duration-700"
+                    style={{ width: `${possessionHome}%` }}
+                    title={`${homeCode}: ${possessionHome}%`}
+                  ></div>
+                  <div
+                    className="bg-cyan-400 h-full transition-all duration-700"
+                    style={{ width: `${possessionAway}%` }}
+                    title={`${awayCode}: ${possessionAway}%`}
+                  ></div>
+                </div>
+              </div>
             </div>
 
             {/* AWAY CLUB (4 cols) */}
@@ -504,7 +521,7 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
           <div className="flex items-center gap-4 text-[11px] font-mono">
             <span className="flex items-center gap-1.5 text-teal-700 font-bold">
               <span className="w-3 h-2 rounded-sm bg-mint inline-block"></span>{" "}
-              Unpaused Window (
+              {t.scoreContainer.unpausedWindow} (
               <span id="window-range-label">
                 {stoppedMinute}&apos; → {currentMinute}&apos;
               </span>
@@ -517,13 +534,15 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
         <div className="relative h-16 bg-slate-100 rounded-xl border border-slate-300 flex items-center px-4 select-none overflow-hidden shadow-inner">
           {/* Pitch Halfway & 15-min Grid Lines */}
           <div className="absolute inset-x-4 top-1.5 flex justify-between text-[10px] font-mono text-slate-500 pointer-events-none">
-            <span>KO 0&apos;</span>
+            <span>{t.scoreContainer.timelineTicks.kickOff}</span>
             <span>15&apos;</span>
             <span>30&apos;</span>
-            <span className="text-pl-purple font-bold">HT 45&apos;</span>
+            <span className="text-pl-purple font-bold">
+              {t.scoreContainer.timelineTicks.halfTime}
+            </span>
             <span className="text-red-600 font-bold">60&apos;</span>
             <span>75&apos;</span>
-            <span>FT 90&apos;</span>
+            <span>{t.scoreContainer.timelineTicks.fullTime}</span>
           </div>
 
           {/* Base 90-Minute Track */}
@@ -634,7 +653,7 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
                   </span>
                 </>
               ) : (
-                <span>TIMELINE EVENT</span>
+                <span>{t.scoreContainer.timelineEvent}</span>
               )}
             </span>
             <div>
@@ -667,7 +686,7 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
               }}
               className="text-xs font-mono font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg bg-pl-purple/10 hover:bg-pl-purple/20 text-pl-purple border border-pl-purple/30 shrink-0 transition-colors cursor-pointer"
             >
-              ▶ Replay Event Animation
+              {t.scoreContainer.replayAnimation}
             </button>
           )}
         </div>

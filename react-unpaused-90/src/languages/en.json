@@ -1,0 +1,206 @@
+{
+  "navbar": {
+    "insideTheGame": "INSIDE THE GAME",
+    "tagline": "Never feel like you missed the match.",
+    "newRandomMatch": "New Random Match (1'–90') ↻",
+    "newRandomMatchTitle": "Initialize a new live match simulation starting at a random minute (1'–90')",
+    "live": "LIVE •",
+    "fullTime": "FULL TIME • 90:00",
+    "language": "Language",
+    "english": "English",
+    "spanish": "Español",
+    "englishBadge": "EN",
+    "spanishBadge": "ES"
+  },
+  "liveGrounds": {
+    "liveGrounds": "LIVE GROUNDS:",
+    "randomStart": "Random Start:",
+    "clock": "Clock:",
+    "speed": "1 min / 30s (2× Speed)",
+    "simulateRandom": "Simulate Random Minute (1'–90') ↻",
+    "fullTimeShort": "FT 90'"
+  },
+  "scoreContainer": {
+    "officialFeed": "OFFICIAL PREMIER LEAGUE BROADCAST FEED",
+    "interactiveTimeWarp": "Interactive Match Time-Warp & Instant Catch-Up",
+    "unpausedWindow": "Unpaused Window",
+    "stadium": "Emirates Stadium, London • Matchweek 28",
+    "possession": "POSSESSION:",
+    "timelineInstruction": "Click any event marker (Goal, Red Card, Yellow Card, Substitution) to trigger its broadcast animation & tactical breakdown",
+    "timelineEvent": "TIMELINE EVENT",
+    "replayAnimation": "▶ Replay Event Animation",
+    "halves": {
+      "firstHalf": "1st Half",
+      "halfTime": "Half Time",
+      "secondHalf": "2nd Half",
+      "fullTime": "Full Time"
+    },
+    "timelineTicks": {
+      "kickOff": "KO 0'",
+      "halfTime": "HT 45'",
+      "fullTime": "FT 90'"
+    }
+  },
+  "heroConsole": {
+    "badge": "HERO CONSOLE • PERSONALIZE YOUR CATCH-UP",
+    "title": "Time-Warp & Broadcast Persona Mixer",
+    "missedAction": "Missed Action:",
+    "missedMinute": "missed minute",
+    "missedMinutes": "missed minutes",
+    "controls": {
+      "timeWindow": {
+        "number": "01. Stopped Watching At",
+        "sub": "Minutes into the match",
+        "label": "Stopped Watching At:",
+        "minLabel": "1' (Kickoff)",
+        "liveNow": "Live Now",
+        "windowPrefix": "Unpaused Catch-Up Window:"
+      },
+      "persona": {
+        "number": "02. Broadcast Persona",
+        "sub": "Audience tailoring",
+        "casual": {
+          "label": "Casual Fan",
+          "sub": "Story & Drama"
+        },
+        "analyst": {
+          "label": "Analyst / Coach",
+          "sub": "Tactics & Shape"
+        },
+        "child": {
+          "label": "Young Child (6–10)",
+          "sub": "Simple & Fun"
+        }
+      },
+      "bias": {
+        "number": "03. Supporter Bias",
+        "sub": "Emotional allegiance",
+        "neutral": "Neutral 50/50",
+        "arsenal": "Arsenal Fan",
+        "liverpool": "Liverpool Fan"
+      },
+      "recapDepth": {
+        "number": "04. Recap Depth",
+        "title": "Select Narration Length",
+        "options": {
+          "sprint": {
+            "label": "1m Flash Sprint",
+            "shortLabel": "1m Sprint",
+            "sub": "~25s Audio • 60–75 words",
+            "badge": "RAPID"
+          },
+          "deep": {
+            "label": "5m Deep Catch-Up",
+            "shortLabel": "5m Deep",
+            "sub": "~2m Audio • 320–380 words",
+            "badge": "TACTICAL"
+          },
+          "full": {
+            "label": "Full Match Summary",
+            "shortLabel": "Full Story",
+            "sub": "~4m Audio • 500–600 words",
+            "badge": "COMPLETE"
+          }
+        }
+      },
+      "audioFeed": {
+        "number": "05. Audio Feed",
+        "title": "Select Commentary Language",
+        "options": {
+          "en": {
+            "label": "British English",
+            "shortLabel": "English (GB)",
+            "sub": "Commentary by Ollie & Ada",
+            "badge": "en-GB"
+          },
+          "es": {
+            "label": "Español (México)",
+            "shortLabel": "Español (MX)",
+            "sub": "Crónica y Análisis en Español",
+            "badge": "es-MX"
+          }
+        }
+      }
+    },
+    "cta": {
+      "activeProfile": "ACTIVE FEED PROFILE:",
+      "generateBtn": "Catch Me Up & Auto-Play Audio",
+      "generatingBtn": "Generating Live Catch-Up",
+      "generatingNotice": "Pinning live window & synthesizing personalized commentary..."
+    }
+  },
+  "cards": {
+    "deckBadge": "LIVE CATCH-UP INTELLIGENCE DECK",
+    "deckTitle": "Personalized Narrative & Tactical Cards",
+    "deckWindow": "Window:",
+    "dismiss": "Dismiss Catch-Up Deck (X)",
+    "card1": {
+      "tag": "01 / NARRATIVE",
+      "title": "What Happened",
+      "fallback": "Click 'Catch Me Up' in the Hero Console above to generate your live catch-up narrative for the missed match window."
+    },
+    "card2": {
+      "tag": "02 / TACTICAL",
+      "title": "Key Tactical Decisions",
+      "fallback": "Arteta and Slot's tactical chess match unfolds as formations shift and pressing triggers evolve."
+    },
+    "card3": {
+      "tag": "03 / TEMPO SWING",
+      "title": "Momentum Changes",
+      "fallback": "Evaluating possession waves, high-press sequences, and field tilt swings...",
+      "passAcc": "PASS ACC:",
+      "shots": "SHOTS:"
+    },
+    "card4": {
+      "tag": "04 / SITUATION",
+      "title": "Current Game State",
+      "fallback": "Current tactical situation and what to watch next as the match advances.",
+      "tacticalContext": "TACTICAL CONTEXT FOR RETURN:"
+    }
+  },
+  "audioDock": {
+    "badge": "SYNCHRONIZED AUDIO BROADCAST DOCK",
+    "title": "Live Neural Voice Narration (Ollie & Ada)",
+    "dismiss": "Close Audio Dock (X)",
+    "hostVoice": "Host Voice:",
+    "ollie": "Ollie (UK Host)",
+    "ada": "Ada (Analyst)",
+    "playing": "Playing",
+    "paused": "Paused",
+    "replay": "Replay Catch-Up Audio",
+    "speed": "Speed",
+    "transcriptTitle": "Live Closed Captions / Transcript",
+    "waitingTranscript": "Generating your live personalized match recap...",
+    "generatingAudio": "Synthesizing custom neural audio..."
+  },
+  "dashboard": {
+    "fullTimeBanner": {
+      "title": "MATCH FINAL • 90' FULL TIME REACHED",
+      "subtitle": "The match has reached full time! Review the complete match story or generate a comprehensive post-match report.",
+      "generateBtn": "Generate Full-Time Personalized Match Report",
+      "generatingBtn": "Synthesizing Full-Time Report...",
+      "dismiss": "Dismiss (X)"
+    },
+    "fullTimeDeck": {
+      "badge": "FULL-TIME OFFICIAL MATCH REPORT",
+      "title": "Complete 90-Minute Tactical & Narrative Summary",
+      "finalScore": "Final Score:",
+      "report": "Official Match Narrative:",
+      "tacticalSummary": "Tactical Summary:",
+      "turningPoint": "Decisive Turning Point:"
+    },
+    "status": {
+      "synced": "Synced to Live Match Window",
+      "generating": "Generating live personalized recap...",
+      "synthesizing": "Synthesizing broadcast audio..."
+    }
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "close": "Close",
+    "replay": "Replay",
+    "minuteShort": "min",
+    "minutesShort": "mins"
+  }
+}
