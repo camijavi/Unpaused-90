@@ -27,13 +27,18 @@ public static class AudioEndpoints
                             string.Equals(request.Language?.Trim(), "es-ES", StringComparison.OrdinalIgnoreCase) ||
                             string.Equals(request.Language?.Trim(), "es-MX", StringComparison.OrdinalIgnoreCase);
 
+            var resolvedVoice = !string.IsNullOrWhiteSpace(request.Voice)
+                ? request.Voice.Trim()
+                : speechService.NextAlternatingVoice();
+            var effectiveRequest = request with { Voice = resolvedVoice };
+
             try
             {
                 // Neural TTS for a full multi-paragraph recap (especially Spanish, which is ~25% longer) routinely
                 // takes several seconds. Scale timeout dynamically with script length so longer narratives never abort prematurely.
                 using var timeoutCts = new CancellationTokenSource(GetSynthesisTimeout(configuration, request.Text.Length));
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
-                var response = await speechService.GenerateAudioUrlAsync(request, linkedCts.Token);
+                var response = await speechService.GenerateAudioUrlAsync(effectiveRequest, linkedCts.Token);
                 return Results.Ok(response);
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
@@ -47,7 +52,7 @@ public static class AudioEndpoints
                 // Keep the persona voice (Ollie/Ada) so the UI highlights the correct co-host.
                 return Results.Ok(new AudioResponse(
                     AudioUrl: null,
-                    Voice: request.Voice ?? "en-GB-OllieMultilingualNeural",
+                    Voice: resolvedVoice,
                     Language: isSpanish ? "es" : "en"
                 ));
             }
@@ -66,11 +71,16 @@ public static class AudioEndpoints
                 return Results.BadRequest(new { error = "Text is required to generate audio." });
             }
 
+            var resolvedVoice = !string.IsNullOrWhiteSpace(request.Voice)
+                ? request.Voice.Trim()
+                : speechService.NextAlternatingVoice();
+            var effectiveRequest = request with { Voice = resolvedVoice };
+
             try
             {
                 using var timeoutCts = new CancellationTokenSource(GetSynthesisTimeout(configuration, request.Text.Length));
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
-                var (audioBytes, _, _) = await speechService.SynthesizeSpeechBytesAsync(request, linkedCts.Token);
+                var (audioBytes, _, _) = await speechService.SynthesizeSpeechBytesAsync(effectiveRequest, linkedCts.Token);
                 return Results.File(audioBytes, "audio/mpeg", "unpaused90-recap.mp3");
             }
             catch (Exception ex)

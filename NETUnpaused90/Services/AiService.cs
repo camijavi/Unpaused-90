@@ -52,7 +52,7 @@ public class AiService
         var cacheKey = $"catchup:{request.MatchId}:{request.LastViewedMinute}:{request.CurrentMinute}:{request.ViewMode}:{request.FavoriteTeam}:{request.Length}:{langCode}";
         if (!request.IncludeAudio && _cache.TryGetValue(cacheKey, out CatchUpResponse? cachedCatchUp) && cachedCatchUp is not null)
         {
-            return cachedCatchUp;
+            return cachedCatchUp with { Voice = _speechService.NextAlternatingVoice() };
         }
 
         var filteredEvents = match.Timeline
@@ -243,7 +243,7 @@ Return ONLY a valid JSON object with these exact 4 keys:
         var cacheKey = $"summary:{request.MatchId}:{request.Mode}:{request.FavoriteTeam}:{request.Length}:{langCode}";
         if (!request.IncludeAudio && _cache.TryGetValue(cacheKey, out PersonalizedSummaryResponse? cachedSummary) && cachedSummary is not null)
         {
-            return cachedSummary;
+            return cachedSummary with { Voice = _speechService.NextAlternatingVoice() };
         }
 
         var (systemPersona, modeGuidelines, temperature) = GetAudiencePersonaProfile(request.Mode);

@@ -57,8 +57,9 @@ export const AudioPlayerDock: React.FC<AudioPlayerDockProps> = ({
             id="audio-play-toggle"
             type="button"
             onClick={onTogglePlay}
+            disabled={isSynthesizing}
             aria-label={isPlaying ? t.audioDock.paused : t.audioDock.playing}
-            className="w-11 h-11 rounded-xl bg-pl-purple text-mint-bright font-black flex items-center justify-center shrink-0 shadow-md hover:scale-105 transition-transform cursor-pointer"
+            className="w-11 h-11 rounded-xl bg-pl-purple text-mint-bright font-black flex items-center justify-center shrink-0 shadow-md hover:scale-105 transition-transform cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span id="audio-play-icon" className="text-base">
               {isPlaying ? "❚❚" : "▶"}

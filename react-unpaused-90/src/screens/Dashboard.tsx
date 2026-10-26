@@ -235,6 +235,31 @@ export const Dashboard: React.FC = () => {
     paused: boolean;
     rate: number;
   }>({ elapsed: 0, lastTick: 0, paused: true, rate: 1 });
+  // Tracks active audio engine: "audio" (HTML5 audio) or "speech" (SpeechSynthesis)
+  const activeAudioSourceRef = useRef<"audio" | "speech" | null>(null);
+  const currentSpeechScriptRef = useRef<string>("");
+  const speechCharIndexRef = useRef<number>(0);
+  const isSpeechPausedRef = useRef<boolean>(false);
+  const currentVoiceNameRef = useRef<string | null>(null);
+  const hasTriggeredRecapRef = useRef<boolean>(false);
+
+  // Preload browser speech voices as soon as available
+  useEffect(() => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.getVoices();
+      const onVoicesChanged = () => {
+        window.speechSynthesis.getVoices();
+      };
+      window.speechSynthesis.addEventListener("voiceschanged", onVoicesChanged);
+      return () => {
+        window.speechSynthesis.removeEventListener(
+          "voiceschanged",
+          onVoicesChanged
+        );
+      };
+    }
+  }, []);
+
   const fxTimeoutRef = useRef<number | null>(null);
   const generationIdRef = useRef<number>(0);
   const hasInitializedRef = useRef<boolean>(false);
@@ -266,6 +291,9 @@ export const Dashboard: React.FC = () => {
     }
     speechUtteranceRef.current = null;
     speechClockRef.current = { elapsed: 0, lastTick: 0, paused: true, rate: 1 };
+    activeAudioSourceRef.current = null;
+    isSpeechPausedRef.current = false;
+    speechCharIndexRef.current = 0;
     setIsPlaying(false);
     setCurrentTime(0);
   }, []);
@@ -301,6 +329,8 @@ export const Dashboard: React.FC = () => {
       const blob = new Blob([bytes], { type: "audio/mpeg" });
       const blobUrl = URL.createObjectURL(blob);
       currentBlobUrlRef.current = blobUrl;
+      activeAudioSourceRef.current = "audio";
+      isSpeechPausedRef.current = false;
 
       const audio = audioRef.current;
       if (audio) {
@@ -328,14 +358,31 @@ export const Dashboard: React.FC = () => {
 
   // Instant browser-native speech synthesis fallback (runs 100% locally with 0ms latency)
   const playBrowserSpeech = useCallback(
-    (text: string, language: "en" | "es", voiceName?: string | null) => {
-      stopAndRevokeCurrentAudio();
+    (
+      text: string,
+      language: "en" | "es",
+      voiceName?: string | null,
+      options?: { preserveClock?: boolean }
+    ) => {
+      if (!options?.preserveClock) {
+        stopAndRevokeCurrentAudio();
+      } else {
+        if (typeof window !== "undefined" && "speechSynthesis" in window) {
+          window.speechSynthesis.cancel();
+        }
+      }
       if (typeof window === "undefined" || !("speechSynthesis" in window)) {
         return;
       }
 
       const utterance = new SpeechSynthesisUtterance(text);
       speechUtteranceRef.current = utterance;
+      activeAudioSourceRef.current = "speech";
+      currentSpeechScriptRef.current = options?.preserveClock
+        ? currentSpeechScriptRef.current
+        : text;
+      currentVoiceNameRef.current = voiceName ?? null;
+      isSpeechPausedRef.current = false;
 
       const voices = window.speechSynthesis.getVoices();
       const isSpanish = language === "es";
@@ -345,11 +392,75 @@ export const Dashboard: React.FC = () => {
       setSpeaker(persona);
 
       const femaleNames = isSpanish
-        ? ["dalia", "paulina", "monica", "mónica", "sabina", "helena", "elvira", "laura", "female", "mujer"]
-        : ["ada", "sonia", "libby", "serena", "kate", "martha", "female", "susan", "hazel"];
+        ? [
+            "dalia",
+            "paulina",
+            "monica",
+            "mónica",
+            "sabina",
+            "helena",
+            "elvira",
+            "laura",
+            "paloma",
+            "carmen",
+            "hilda",
+            "female",
+            "mujer",
+          ]
+        : [
+            "zira",
+            "jenny",
+            "aria",
+            "sonia",
+            "libby",
+            "ada",
+            "serena",
+            "kate",
+            "martha",
+            "female",
+            "woman",
+            "susan",
+            "hazel",
+            "samantha",
+            "victoria",
+            "karen",
+            "moira",
+            "tessa",
+            "fiona",
+            "eva",
+          ];
       const maleNames = isSpanish
-        ? ["jorge", "juan", "diego", "pablo", "raul", "álvaro", "alvaro", "carlos", "hombre"]
-        : ["ollie", "ryan", "daniel", "arthur", "george", "oliver", "david", "thomas"];
+        ? [
+            "jorge",
+            "juan",
+            "diego",
+            "pablo",
+            "raul",
+            "álvaro",
+            "alvaro",
+            "carlos",
+            "alberto",
+            "enrique",
+            "miguel",
+            "hombre",
+          ]
+        : [
+            "david",
+            "mark",
+            "guy",
+            "ryan",
+            "daniel",
+            "arthur",
+            "george",
+            "oliver",
+            "ollie",
+            "thomas",
+            "richard",
+            "james",
+            "male",
+            "hombre",
+          ];
+
       // Neural/online voices sound far more natural than the legacy compact system voices
       const qualityScore = (v: SpeechSynthesisVoice) => {
         const n = v.name.toLowerCase();
@@ -360,13 +471,16 @@ export const Dashboard: React.FC = () => {
         if (!isSpanish && v.lang.toLowerCase() === "en-gb") score += 1;
         return score;
       };
+
       const isGenderMatch = (v: SpeechSynthesisVoice) => {
         const n = v.name.toLowerCase();
-        // NOTE: never match on "male" — it is a substring of "female"
-        if (prefersFemale) return femaleNames.some((f) => n.includes(f));
+        if (prefersFemale) {
+          return femaleNames.some((f) => n.includes(f));
+        }
         return (
-          maleNames.some((m) => n.includes(m)) || /\bmale\b/.test(n)
-        ) && !femaleNames.some((f) => n.includes(f));
+          maleNames.some((m) => n.includes(m)) &&
+          !femaleNames.some((f) => n.includes(f))
+        );
       };
 
       const languageVoices = voices
@@ -379,13 +493,26 @@ export const Dashboard: React.FC = () => {
         utterance.voice = matchedVoice;
       }
       utterance.lang = matchedVoice?.lang ?? (isSpanish ? "es-MX" : "en-GB");
-      utterance.rate = playbackSpeed;
-      utterance.pitch = 1.0;
 
-      const words = text.split(/\s+/).filter(Boolean).length;
+      // Distinct personality tuning: Ada is bright/higher pitch, Ollie is deeper host pitch
+      if (prefersFemale) {
+        utterance.pitch = 1.15;
+        utterance.rate = playbackSpeed * 1.02;
+      } else {
+        utterance.pitch = 0.95;
+        utterance.rate = playbackSpeed * 0.98;
+      }
+
+      const words = (currentSpeechScriptRef.current || text)
+        .split(/\s+/)
+        .filter(Boolean).length;
       const estimatedSec = Math.max(10, Math.round(words / 2.6));
       setDuration(estimatedSec);
-      setCurrentTime(0);
+
+      if (!options?.preserveClock) {
+        setCurrentTime(0);
+        speechCharIndexRef.current = 0;
+      }
 
       const clearTicker = () => {
         if (speechTickerRef.current) {
@@ -394,10 +521,20 @@ export const Dashboard: React.FC = () => {
         }
       };
 
+      utterance.onboundary = (e) => {
+        if (typeof e.charIndex === "number") {
+          const offset = options?.preserveClock
+            ? speechCharIndexRef.current
+            : 0;
+          speechCharIndexRef.current = offset + e.charIndex;
+        }
+      };
+
       utterance.onstart = () => {
         setIsPlaying(true);
+        isSpeechPausedRef.current = false;
         speechClockRef.current = {
-          elapsed: 0,
+          elapsed: options?.preserveClock ? speechClockRef.current.elapsed : 0,
           lastTick: Date.now(),
           paused: false,
           rate: playbackSpeed,
@@ -414,26 +551,33 @@ export const Dashboard: React.FC = () => {
         }, 250);
       };
 
-      // Some browsers emit these when speechSynthesis.pause()/resume() is called
       utterance.onpause = () => {
         speechClockRef.current.paused = true;
+        isSpeechPausedRef.current = true;
         setIsPlaying(false);
       };
+
       utterance.onresume = () => {
         speechClockRef.current.lastTick = Date.now();
         speechClockRef.current.paused = false;
+        isSpeechPausedRef.current = false;
         setIsPlaying(true);
       };
 
       utterance.onend = () => {
         setIsPlaying(false);
-        setCurrentTime(estimatedSec);
+        isSpeechPausedRef.current = false;
         speechClockRef.current.paused = true;
+        setCurrentTime(estimatedSec);
         clearTicker();
       };
 
-      utterance.onerror = () => {
+      utterance.onerror = (e) => {
+        if (e.error !== "interrupted" && e.error !== "canceled") {
+          console.warn("SpeechSynthesis error:", e.error);
+        }
         setIsPlaying(false);
+        isSpeechPausedRef.current = false;
         speechClockRef.current.paused = true;
         clearTicker();
       };
@@ -685,19 +829,26 @@ export const Dashboard: React.FC = () => {
         }
         setIsGeneratingSummary(false);
 
-        const assignedSpeaker = speakerFromVoice(res.voice);
-        setSpeaker(assignedSpeaker);
+        const nextHost: "Ollie" | "Ada" = res.voice
+          ? speakerFromVoice(res.voice, speakerRef.current === "Ollie" ? "Ada" : "Ollie")
+          : (speakerRef.current === "Ollie" ? "Ada" : "Ollie");
+        setSpeaker(nextHost);
 
         if (res.story) {
           setTranscriptLine(res.story);
         }
 
         if (autoPlayAudio && res.story) {
+          const targetVoice =
+            nextHost === "Ada"
+              ? (effectiveLang === "es" ? "es-MX-DaliaNeural" : "en-GB-AdaMultilingualNeural")
+              : (effectiveLang === "es" ? "es-MX-JorgeNeural" : "en-GB-OllieMultilingualNeural");
+
           setIsSynthesizing(true);
           try {
             const audioRes = await synthesizeAudio({
               text: res.story,
-              voice: res.voice ?? null,
+              voice: targetVoice,
               language: effectiveLang,
             });
             if (myGenId !== generationIdRef.current) return;
@@ -705,13 +856,13 @@ export const Dashboard: React.FC = () => {
             if (audioRes.audioUrl) {
               playFreshAudioDataUrl(audioRes.audioUrl);
             } else {
-              playBrowserSpeech(res.story, effectiveLang, audioRes.voice);
+              playBrowserSpeech(res.story, effectiveLang, targetVoice);
             }
           } catch (audioErr) {
             console.warn("Full-time summary audio fallback to native speech:", audioErr);
             if (myGenId === generationIdRef.current) {
               setIsSynthesizing(false);
-              playBrowserSpeech(res.story, effectiveLang, res.voice);
+              playBrowserSpeech(res.story, effectiveLang, targetVoice);
             }
           }
         }
@@ -739,22 +890,31 @@ export const Dashboard: React.FC = () => {
       setShowAudioDock(true);
       setIsSynthesizing(true);
       stopAndRevokeCurrentAudio();
+      const targetSpeaker: "Ollie" | "Ada" = voice
+        ? speakerFromVoice(voice)
+        : (speakerRef.current === "Ollie" ? "Ada" : "Ollie");
+      setSpeaker(targetSpeaker);
+      const targetVoice =
+        targetSpeaker === "Ada"
+          ? (lang === "es" ? "es-MX-DaliaNeural" : "en-GB-AdaMultilingualNeural")
+          : (lang === "es" ? "es-MX-JorgeNeural" : "en-GB-OllieMultilingualNeural");
+
       try {
         const audioRes = await synthesizeAudio({
           text,
-          voice: voice ?? null,
+          voice: targetVoice,
           language: lang,
         });
         setIsSynthesizing(false);
         if (audioRes.audioUrl) {
           playFreshAudioDataUrl(audioRes.audioUrl);
         } else {
-          playBrowserSpeech(text, lang, audioRes.voice);
+          playBrowserSpeech(text, lang, targetVoice);
         }
       } catch (audioErr) {
         console.warn("Summary audio synthesis fallback to native speech:", audioErr);
         setIsSynthesizing(false);
-        playBrowserSpeech(text, lang, voice);
+        playBrowserSpeech(text, lang, targetVoice);
       }
     },
     [lang, playBrowserSpeech, playFreshAudioDataUrl, stopAndRevokeCurrentAudio]
@@ -865,8 +1025,12 @@ export const Dashboard: React.FC = () => {
           : `Synced to ${clampedStopped}'–${targetCurrentMin}' Window`
       );
 
-      const assignedSpeaker = speakerFromVoice(res.voice);
-      setSpeaker(assignedSpeaker);
+      // Determine speaker: alternate turns between Ollie and Ada across recaps
+      const nextSpeaker: "Ollie" | "Ada" = hasTriggeredRecapRef.current
+        ? (speakerRef.current === "Ollie" ? "Ada" : "Ollie")
+        : (res.voice ? speakerFromVoice(res.voice) : "Ollie");
+      hasTriggeredRecapRef.current = true;
+      setSpeaker(nextSpeaker);
 
       const narrationScript = [
         res.whatHappened,
@@ -883,6 +1047,11 @@ export const Dashboard: React.FC = () => {
 
       // Step 2: Synthesize & auto-play audio
       if (autoPlayAudio && narrationScript) {
+        const targetVoice =
+          nextSpeaker === "Ada"
+            ? (lang === "es" ? "es-MX-DaliaNeural" : "en-GB-AdaMultilingualNeural")
+            : (lang === "es" ? "es-MX-JorgeNeural" : "en-GB-OllieMultilingualNeural");
+
         setIsSynthesizing(true);
         setStatusBadgeText(
           lang === "es"
@@ -892,7 +1061,7 @@ export const Dashboard: React.FC = () => {
         try {
           const audioRes = await synthesizeAudio({
             text: narrationScript,
-            voice: res.voice ?? null,
+            voice: targetVoice,
             language: lang,
           });
 
@@ -904,13 +1073,10 @@ export const Dashboard: React.FC = () => {
               : `Synced to ${clampedStopped}'–${targetCurrentMin}' Window`
           );
 
-          if (audioRes.voice) {
-            setSpeaker(speakerFromVoice(audioRes.voice, assignedSpeaker));
-          }
           if (audioRes.audioUrl) {
             playFreshAudioDataUrl(audioRes.audioUrl);
           } else {
-            playBrowserSpeech(narrationScript, lang, audioRes.voice);
+            playBrowserSpeech(narrationScript, lang, targetVoice);
           }
         } catch (audioErr) {
           console.warn("Cloud audio fallback to native speech:", audioErr);
@@ -921,7 +1087,7 @@ export const Dashboard: React.FC = () => {
                 ? `Sincronizado a ventana ${clampedStopped}'–${targetCurrentMin}'`
                 : `Synced to ${clampedStopped}'–${targetCurrentMin}' Window`
             );
-            playBrowserSpeech(narrationScript, lang, res.voice);
+            playBrowserSpeech(narrationScript, lang, targetVoice);
           }
         }
       }
@@ -942,12 +1108,12 @@ export const Dashboard: React.FC = () => {
 
   // Handle "Pass Mic to Ada/Ollie" button in Audio Dock
   const handleSwitchSpeaker = async () => {
-    const nextSpeaker = speaker === "Ollie" ? "Ada" : "Ollie";
+    const nextSpeaker: "Ollie" | "Ada" = speakerRef.current === "Ollie" ? "Ada" : "Ollie";
     setSpeaker(nextSpeaker);
     const nextVoice =
       nextSpeaker === "Ada"
-        ? "en-GB-AdaMultilingualNeural"
-        : "en-GB-OllieMultilingualNeural";
+        ? (lang === "es" ? "es-MX-DaliaNeural" : "en-GB-AdaMultilingualNeural")
+        : (lang === "es" ? "es-MX-JorgeNeural" : "en-GB-OllieMultilingualNeural");
 
     const narrationScript = catchUp
       ? [
@@ -988,46 +1154,84 @@ export const Dashboard: React.FC = () => {
   };
 
   const handleTogglePlay = () => {
-    // If Web Speech API is speaking or paused
-    if (
-      typeof window !== "undefined" &&
-      "speechSynthesis" in window &&
-      window.speechSynthesis.speaking
-    ) {
-      if (window.speechSynthesis.paused) {
-        speechClockRef.current.lastTick = Date.now();
-        speechClockRef.current.paused = false;
-        window.speechSynthesis.resume();
-        setIsPlaying(true);
-      } else {
-        speechClockRef.current.paused = true;
-        window.speechSynthesis.pause();
+    if (isSynthesizing) return;
+
+    // A. Active HTML5 Audio Element (blob MP3)
+    if (activeAudioSourceRef.current === "audio") {
+      const audio = audioRef.current;
+      if (!audio) return;
+      if (isPlaying) {
+        audio.pause();
         setIsPlaying(false);
+      } else {
+        if (audio.ended || audio.currentTime >= audio.duration) {
+          audio.currentTime = 0;
+        }
+        audio.playbackRate = playbackSpeed;
+        audio
+          .play()
+          .then(() => setIsPlaying(true))
+          .catch((err) => {
+            console.error("Audio play failed:", err);
+            setIsPlaying(false);
+          });
       }
       return;
     }
 
-    const audio = audioRef.current;
-    if (
-      !audio ||
-      !currentBlobUrlRef.current ||
-      audio.src === SILENT_UNLOCK_WAV
-    ) {
-      runCatchUp(true, true);
+    // B. Active Web Speech API
+    if (activeAudioSourceRef.current === "speech") {
+      if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+      if (isPlaying) {
+        // User wants to Pause
+        isSpeechPausedRef.current = true;
+        speechClockRef.current.paused = true;
+        setIsPlaying(false);
+        window.speechSynthesis.pause();
+      } else {
+        // User wants to Unpause / Resume or Replay
+        if (isSpeechPausedRef.current) {
+          isSpeechPausedRef.current = false;
+          speechClockRef.current.lastTick = Date.now();
+          speechClockRef.current.paused = false;
+          setIsPlaying(true);
+
+          if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+          }
+
+          // Resilient Chromium on Windows check: if resume() didn't restart speech within 150ms
+          window.setTimeout(() => {
+            if (
+              !isSpeechPausedRef.current &&
+              (window.speechSynthesis.paused || !window.speechSynthesis.speaking)
+            ) {
+              const fullText = currentSpeechScriptRef.current;
+              const remainingIndex = speechCharIndexRef.current;
+              const remainingText = fullText.slice(remainingIndex).trim();
+              if (remainingText) {
+                window.speechSynthesis.cancel();
+                playBrowserSpeech(remainingText, lang, currentVoiceNameRef.current, {
+                  preserveClock: true,
+                });
+              }
+            }
+          }, 150);
+        } else {
+          // Replay completed speech
+          const textToReplay = currentSpeechScriptRef.current || transcriptLine;
+          if (textToReplay) {
+            setCurrentTime(0);
+            playBrowserSpeech(textToReplay, lang, currentVoiceNameRef.current);
+          }
+        }
+      }
       return;
     }
-    if (audio.paused) {
-      audio
-        .play()
-        .then(() => setIsPlaying(true))
-        .catch((err) => {
-          console.error("Audio play failed:", err);
-          setIsPlaying(false);
-        });
-    } else {
-      audio.pause();
-      setIsPlaying(false);
-    }
+
+    // C. No audio currently loaded — trigger Catch Up to generate and auto-play
+    runCatchUp(true, true);
   };
 
   const handleCycleSpeed = () => {
@@ -1037,6 +1241,7 @@ export const Dashboard: React.FC = () => {
     if (audioRef.current) {
       audioRef.current.playbackRate = next;
     }
+    speechClockRef.current.rate = next;
   };
 
   const handleCloseAudioDock = () => {
