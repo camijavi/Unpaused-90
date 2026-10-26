@@ -39,6 +39,20 @@
       "kickOff": "KO 0'",
       "halfTime": "HT 45'",
       "fullTime": "FT 90'"
+    },
+    "timelineFilters": {
+      "all": "All Events",
+      "keyMoments": "Key Events",
+      "goals": "Goals Only",
+      "inWindow": "In Window Only",
+      "homeOnly": "Arsenal",
+      "awayOnly": "Liverpool",
+      "bothTeams": "Both Teams",
+      "showing": "Showing",
+      "of": "of",
+      "events": "events",
+      "homeLane": "Arsenal (Home)",
+      "awayLane": "Liverpool (Away)"
     }
   },
   "heroConsole": {

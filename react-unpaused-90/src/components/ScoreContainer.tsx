@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useMemo } from "react";
 import stadiumImg from "../assets/stadium.jpe";
 import Goal from "../Animations/Goal";
 import YellowCard from "../Animations/YellowCard";
@@ -14,9 +14,12 @@ import type {
 import {
   ArsenalCrest,
   BallIcon,
+  FilterIcon,
   LiverpoolCrest,
   RedCardIcon,
   SubIcon,
+  TargetIcon,
+  TimerIcon,
   YellowCardIcon,
 } from "./Icons";
 import { useLanguage } from "../languages/LanguageContext";
@@ -204,6 +207,117 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
 
   // Active event for the inspector drawer
   const activeEv = selectedEvent ?? timeline[timeline.length - 1] ?? null;
+
+  // Timeline Filtering States (All, Key Moments, Goals Only, In-Window Only)
+  const [filterCategory, setFilterCategory] = useState<
+    "all" | "key" | "goals" | "window"
+  >("all");
+  const [filterTeam, setFilterTeam] = useState<"all" | "home" | "away">("all");
+
+  // Filter events based on active category and team toggles
+  const filteredTimeline = useMemo(() => {
+    return timeline.filter((ev) => {
+      // Category filter
+      if (filterCategory === "goals") {
+        if (!ev.eventType.toLowerCase().includes("goal")) return false;
+      } else if (filterCategory === "key") {
+        const norm = ev.eventType.toLowerCase();
+        const isKey =
+          norm.includes("goal") ||
+          norm.includes("card") ||
+          norm.includes("penalty") ||
+          norm.includes("sub");
+        if (!isKey) return false;
+      } else if (filterCategory === "window") {
+        if (ev.minute < stoppedMinute || ev.minute > currentMinute) return false;
+      }
+
+      // Team filter
+      if (filterTeam === "home") {
+        if (ev.team !== homeCode && ev.team !== homeName) return false;
+      } else if (filterTeam === "away") {
+        if (ev.team === homeCode || ev.team === homeName) return false;
+      }
+
+      return true;
+    });
+  }, [
+    timeline,
+    filterCategory,
+    filterTeam,
+    stoppedMinute,
+    currentMinute,
+    homeCode,
+    homeName,
+  ]);
+
+  const homeEvents = useMemo(() => {
+    return filteredTimeline.filter(
+      (ev) => ev.team === homeCode || ev.team === homeName,
+    );
+  }, [filteredTimeline, homeCode, homeName]);
+
+  const awayEvents = useMemo(() => {
+    return filteredTimeline.filter(
+      (ev) => ev.team !== homeCode && ev.team !== homeName,
+    );
+  }, [filteredTimeline, homeCode, homeName]);
+
+  // Multi-tier anti-collision algorithm to guarantee pins never overlap
+  const layoutPins = (events: TimelineEvent[]) => {
+    const sorted = [...events].sort((a, b) => a.minute - b.minute);
+    const lastMin = [-999, -999, -999];
+    const COLLISION_MINUTES = 4.2;
+
+    return sorted.map((ev, idx) => {
+      let leftPct = Math.min(96, Math.max(4, (ev.minute / 90) * 100));
+      const inWindow = ev.minute >= stoppedMinute && ev.minute <= currentMinute;
+      const kind = mapEventTypeToAnimationKind(ev.eventType);
+      const isSelected = activeEv?.eventId === ev.eventId;
+
+      const dists = [
+        Math.abs(ev.minute - lastMin[0]),
+        Math.abs(ev.minute - lastMin[1]),
+        Math.abs(ev.minute - lastMin[2]),
+      ];
+
+      let chosenTier = -1;
+      for (let i = 0; i < 3; i++) {
+        if (dists[i] >= COLLISION_MINUTES) {
+          chosenTier = i;
+          break;
+        }
+      }
+
+      if (chosenTier === -1) {
+        chosenTier = dists.indexOf(Math.max(...dists));
+        if (dists[chosenTier] < 2.5) {
+          const nudge = idx % 2 === 0 ? -1.2 : 1.2;
+          leftPct = Math.min(96, Math.max(4, leftPct + nudge));
+        }
+      }
+
+      lastMin[chosenTier] = ev.minute;
+
+      return {
+        ev,
+        leftPct,
+        tier: chosenTier,
+        inWindow,
+        kind,
+        isSelected,
+      };
+    });
+  };
+
+  const positionedHome = useMemo(
+    () => layoutPins(homeEvents),
+    [homeEvents, stoppedMinute, currentMinute, activeEv],
+  );
+  const positionedAway = useMemo(
+    () => layoutPins(awayEvents),
+    [awayEvents, stoppedMinute, currentMinute, activeEv],
+  );
 
   const formattedActiveEv = activeEv
     ? formatTimelineEventTitle(activeEv, homeCode, homeName, awayName)
@@ -495,45 +609,170 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
 
       {/* LIGHT-MODE MATCH TIMELINE SCRUBBER & EVENT PINS (REAL DATA) */}
       <div className="p-4 sm:p-6 bg-white border-t border-slate-200">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+        {/* MATCH TIMELINE HEADER & LIVE FX LEGEND */}
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="px-2.5 py-0.5 rounded bg-pl-purple text-white font-mono text-[11px] font-bold uppercase">
+            <span className="px-2.5 py-0.5 rounded bg-pl-purple text-white font-mono text-[11px] font-bold uppercase tracking-wider">
               MATCH TIMELINE &amp; LIVE FX
             </span>
-            <span className="text-xs text-slate-600 flex items-center gap-1.5 flex-wrap">
-              <span>Click any event pin (</span>
-              <strong className="text-emerald-700 inline-flex items-center gap-1">
+            <span className="text-xs text-slate-600 flex items-center gap-2 flex-wrap">
+              <span>Click any pin (</span>
+              <span className="text-emerald-700 font-bold inline-flex items-center gap-1">
                 <BallIcon className="w-3.5 h-3.5" /> Goal
-              </strong>
-              <span>,</span>
-              <strong className="text-amber-600 inline-flex items-center gap-1">
-                <YellowCardIcon className="w-3 h-3.5" /> Yellow
-              </strong>
-              <span>,</span>
-              <strong className="text-sky-700 inline-flex items-center gap-1">
-                <SubIcon className="w-3.5 h-3.5" /> Tactical
-              </strong>
-              <span>
-                ) to trigger its broadcast animation &amp; tactical breakdown
               </span>
+              <span>•</span>
+              <span className="text-amber-600 font-bold inline-flex items-center gap-1">
+                <YellowCardIcon className="w-3 h-3.5" /> Yellow
+              </span>
+              <span>•</span>
+              <span className="text-red-600 font-bold inline-flex items-center gap-1">
+                <RedCardIcon className="w-3 h-3.5" /> Red
+              </span>
+              <span>•</span>
+              <span className="text-sky-700 font-bold inline-flex items-center gap-1">
+                <SubIcon className="w-3.5 h-3.5" /> Tactical/Sub
+              </span>
+              <span>) to trigger broadcast animations &amp; AI breakdown</span>
             </span>
           </div>
-          <div className="flex items-center gap-4 text-[11px] font-mono">
-            <span className="flex items-center gap-1.5 text-teal-700 font-bold">
-              <span className="w-3 h-2 rounded-sm bg-mint inline-block"></span>{" "}
-              {t.scoreContainer.unpausedWindow} (
-              <span id="window-range-label">
-                {stoppedMinute}&apos; → {currentMinute}&apos;
-              </span>
-              )
+
+          <div className="flex items-center gap-2 text-[11px] font-mono">
+            <span className="text-slate-500 font-semibold">
+              {t.scoreContainer.timelineFilters.showing}{" "}
+              <strong className="text-slate-900">{filteredTimeline.length}</strong>{" "}
+              {t.scoreContainer.timelineFilters.of}{" "}
+              <strong className="text-slate-900">{timeline.length}</strong>{" "}
+              {t.scoreContainer.timelineFilters.events}
             </span>
           </div>
         </div>
 
-        {/* Custom Daylight Broadcast Timeline Track */}
-        <div className="relative h-16 bg-slate-100 rounded-xl border border-slate-300 flex items-center px-4 select-none overflow-hidden shadow-inner">
-          {/* Pitch Halfway & 15-min Grid Lines */}
-          <div className="absolute inset-x-4 top-1.5 flex justify-between text-[10px] font-mono text-slate-500 pointer-events-none">
+        {/* TIMELINE INTERACTIVE FILTER CONTROLS */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3.5 pb-2.5 border-b border-slate-100">
+          {/* Category Filter Tabs */}
+          <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-mono">
+            <span className="pl-2 pr-1 text-slate-400 flex items-center">
+              <FilterIcon className="w-3.5 h-3.5" />
+            </span>
+            <button
+              type="button"
+              onClick={() => setFilterCategory("all")}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                filterCategory === "all"
+                  ? "bg-white text-slate-900 shadow-sm border border-slate-200"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              {t.scoreContainer.timelineFilters.all}
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterCategory("key")}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                filterCategory === "key"
+                  ? "bg-white text-slate-900 shadow-sm border border-slate-200"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <BallIcon className="w-3 h-3 text-emerald-600 shrink-0" />
+              <span>{t.scoreContainer.timelineFilters.keyMoments}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterCategory("goals")}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                filterCategory === "goals"
+                  ? "bg-white text-slate-900 shadow-sm border border-slate-200"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <BallIcon className="w-3 h-3 text-emerald-600 shrink-0" />
+              <span>{t.scoreContainer.timelineFilters.goals}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterCategory("window")}
+              className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                filterCategory === "window"
+                  ? "bg-teal-600 text-white shadow-sm"
+                  : "text-teal-700 hover:text-teal-900"
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-mint shrink-0"></span>
+              <span>{t.scoreContainer.timelineFilters.inWindow}</span>
+            </button>
+          </div>
+
+          {/* Team Filter & Window Indicator */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-mono">
+              <button
+                type="button"
+                onClick={() => setFilterTeam("all")}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                  filterTeam === "all"
+                    ? "bg-white text-slate-900 shadow-sm border border-slate-200"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                {t.scoreContainer.timelineFilters.bothTeams}
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterTeam("home")}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  filterTeam === "home"
+                    ? "bg-red-600 text-white shadow-sm"
+                    : "text-red-700 hover:text-red-900"
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                <span>{homeCode}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterTeam("away")}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  filterTeam === "away"
+                    ? "bg-rose-600 text-white shadow-sm"
+                    : "text-rose-700 hover:text-rose-900"
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                <span>{awayCode}</span>
+              </button>
+            </div>
+
+            <span className="text-[11px] font-mono font-bold text-teal-800 bg-teal-50 px-2.5 py-1 rounded-lg border border-teal-200 flex items-center gap-1.5 shrink-0">
+              <span className="w-2 h-2 rounded-full bg-teal-500 animate-pulse shrink-0"></span>
+              <span>
+                {t.scoreContainer.unpausedWindow}:{" "}
+                <span id="window-range-label">
+                  {stoppedMinute}&apos; → {currentMinute}&apos;
+                </span>
+              </span>
+            </span>
+          </div>
+        </div>
+
+        {/* Custom Daylight Multi-Tier Broadcast Timeline Track */}
+        <div className="relative h-[192px] bg-slate-50/90 rounded-2xl border border-slate-300 select-none shadow-inner overflow-hidden">
+          {/* Subtle Team Lane Banners */}
+          <div className="absolute left-3 top-2 flex items-center gap-1.5 pointer-events-none select-none z-0 opacity-80">
+            <span className="w-2 h-2 rounded-full bg-red-600"></span>
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500">
+              {homeName} ({homeCode}) • {t.scoreContainer.timelineFilters.homeLane}
+            </span>
+          </div>
+          <div className="absolute left-3 bottom-2 flex items-center gap-1.5 pointer-events-none select-none z-0 opacity-80">
+            <span className="w-2 h-2 rounded-full bg-rose-600"></span>
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500">
+              {awayName} ({awayCode}) • {t.scoreContainer.timelineFilters.awayLane}
+            </span>
+          </div>
+
+          {/* Minute Tick Labels */}
+          <div className="absolute inset-x-6 top-[74px] flex justify-between text-[10px] font-mono text-slate-500 pointer-events-none z-0">
             <span>{t.scoreContainer.timelineTicks.kickOff}</span>
             <span>15&apos;</span>
             <span>30&apos;</span>
@@ -545,85 +784,198 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
             <span>{t.scoreContainer.timelineTicks.fullTime}</span>
           </div>
 
-          {/* Base 90-Minute Track */}
-          <div className="relative w-full h-3 bg-slate-300 rounded-sm mt-3 overflow-hidden">
+          {/* Central 90-Minute Track Bar */}
+          <div className="absolute inset-x-6 top-[92px] h-3 bg-slate-200 rounded-full border border-slate-300 overflow-hidden shadow-inner">
             {/* Watched segment */}
             <div
               id="timeline-watched-bar"
-              className="absolute top-0 left-0 h-full bg-slate-500 transition-all duration-300"
+              className="absolute top-0 left-0 h-full bg-slate-400 transition-all duration-300"
               style={{ width: `${watchedPct}%` }}
             ></div>
             {/* Missed / Unpaused Window Highlight */}
             <div
               id="timeline-missed-bar"
-              className="absolute top-0 h-full bg-gradient-to-r from-teal-500 via-mint to-sky-500 transition-all duration-300"
+              className="absolute top-0 h-full bg-gradient-to-r from-teal-500 via-mint to-sky-500 transition-all duration-300 shadow-[0_0_12px_rgba(20,184,166,0.6)]"
               style={{ left: `${watchedPct}%`, width: `${missedPct}%` }}
             ></div>
           </div>
 
-          {/* Interactive Timeline Event Pins from Real Backend Data */}
+          {/* Live Match Clock Needle Cursor on the Track */}
           <div
-            id="timeline-markers-container"
-            className="absolute inset-x-4 inset-y-0 pointer-events-none"
+            className="absolute top-[88px] -translate-x-1/2 pointer-events-none z-10 flex flex-col items-center"
+            style={{ left: `calc(1.5rem + (100% - 3rem) * ${Math.min(100, (currentMinute / 90) * 100) / 100})` }}
           >
-            {timeline.map((ev) => {
-              const leftPct = Math.min(96, Math.max(4, (ev.minute / 90) * 100));
-              const inWindow =
-                ev.minute >= stoppedMinute && ev.minute <= currentMinute;
-              const kind = mapEventTypeToAnimationKind(ev.eventType);
-              const isSelected = activeEv?.eventId === ev.eventId;
+            <span className="w-5 h-5 rounded-full bg-red-600/20 animate-ping absolute -top-0.5"></span>
+            <span className="w-5 h-5 rounded-full bg-red-600 border-2 border-white shadow-md flex items-center justify-center text-[9px] font-mono font-black text-white">
+              {currentMinute}&apos;
+            </span>
+          </div>
 
-              const colorClass =
-                kind === "red"
-                  ? "bg-red-600 text-white ring-red-300"
-                  : kind === "yellow"
-                    ? "bg-amber-400 text-slate-950 ring-amber-200"
-                    : kind === "goal"
-                      ? "bg-emerald-600 text-white ring-emerald-300"
-                      : "bg-sky-600 text-white ring-sky-200";
+          {/* Stem Lines & Pins Container */}
+          <div className="absolute inset-x-6 inset-y-0 pointer-events-none">
+            {/* HOME TEAM EVENTS (TOP LANE: Tiers 2, 1, 0) */}
+            {positionedHome.map((pos) => {
+              const { ev, leftPct, tier, inWindow, kind, isSelected } = pos;
+              const info = formatTimelineEventTitle(ev, homeCode, homeName, awayName);
+              const homeTiersTop = [50, 26, 2];
+              const topPx = homeTiersTop[tier];
+              const stemTop = topPx + 24;
+              const stemHeight = Math.max(0, 92 - stemTop);
 
-              const info = formatTimelineEventTitle(
-                ev,
-                homeCode,
-                homeName,
-                awayName,
-              );
+              const isGoal = kind === "goal";
+              const isRed = kind === "red";
+              const isYellow = kind === "yellow";
+              const isPenalty = ev.eventType.toLowerCase().includes("penalty");
+              const isShot = ev.eventType.toLowerCase().includes("shot");
+              const isPressure = ev.eventType.toLowerCase().includes("pressure");
+
+              let badgeStyle = "bg-white text-slate-700 border border-slate-300 hover:border-slate-500";
+              if (inWindow) {
+                if (isGoal) badgeStyle = "bg-emerald-600 text-white ring-2 ring-emerald-300 shadow-md";
+                else if (isRed) badgeStyle = "bg-red-600 text-white ring-2 ring-red-300 shadow-md";
+                else if (isYellow) badgeStyle = "bg-amber-400 text-slate-950 ring-2 ring-amber-200 shadow-md";
+                else if (isPenalty) badgeStyle = "bg-purple-700 text-white ring-2 ring-purple-300 shadow-md";
+                else if (isShot) badgeStyle = "bg-slate-700 text-white ring-2 ring-slate-300 shadow-md";
+                else if (isPressure) badgeStyle = "bg-indigo-600 text-white ring-2 ring-indigo-300 shadow-md";
+                else badgeStyle = "bg-sky-600 text-white ring-2 ring-sky-300 shadow-md";
+              } else {
+                if (isGoal) badgeStyle = "bg-emerald-50 text-emerald-800 border border-emerald-400 hover:bg-emerald-600 hover:text-white";
+                else if (isRed) badgeStyle = "bg-red-50 text-red-800 border border-red-400 hover:bg-red-600 hover:text-white";
+                else if (isYellow) badgeStyle = "bg-amber-50 text-amber-900 border border-amber-400 hover:bg-amber-400 hover:text-slate-950";
+                else if (isPenalty) badgeStyle = "bg-purple-50 text-purple-900 border border-purple-400 hover:bg-purple-700 hover:text-white";
+                else if (isShot) badgeStyle = "bg-white text-slate-600 border border-slate-300 hover:bg-slate-700 hover:text-white";
+                else if (isPressure) badgeStyle = "bg-indigo-50 text-indigo-800 border border-indigo-300 hover:bg-indigo-600 hover:text-white";
+                else badgeStyle = "bg-sky-50 text-sky-800 border border-sky-300 hover:bg-sky-600 hover:text-white";
+              }
 
               return (
-                <button
-                  key={ev.eventId}
-                  type="button"
-                  style={{ left: `${leftPct}%` }}
-                  onClick={() => {
-                    onSelectTimelineEvent(ev);
-                    onTriggerAnimation({
-                      kind,
-                      min: ev.minute,
-                      club: info.clubName,
-                      player: info.playerLine,
-                      sub: info.title,
-                    });
-                  }}
-                  className={`timeline-pin pointer-events-auto -translate-x-1/2 top-5 absolute px-2 py-0.5 rounded-md text-[11px] font-mono font-extrabold transition-transform hover:scale-125 shadow flex items-center gap-1 cursor-pointer ${
-                    inWindow
-                      ? `${colorClass} ring-4`
-                      : "bg-white text-slate-700 border border-slate-300"
-                  } ${isSelected ? "scale-110 ring-pl-purple" : ""}`}
-                  title={`${ev.minute}' ${info.title}`}
-                >
-                  {kind === "goal" && <BallIcon className="w-3 h-3 shrink-0" />}
-                  {kind === "yellow" && (
-                    <YellowCardIcon className="w-2.5 h-3 shrink-0" />
-                  )}
-                  {kind === "red" && (
-                    <RedCardIcon className="w-2.5 h-3 shrink-0" />
-                  )}
-                  {kind === "sub" && <SubIcon className="w-3 h-3 shrink-0" />}
-                  <span>{ev.minute}&apos;</span>
-                </button>
+                <React.Fragment key={ev.eventId}>
+                  {/* Stem line connecting pin to track */}
+                  <div
+                    style={{ left: `${leftPct}%`, top: `${stemTop}px`, height: `${stemHeight}px` }}
+                    className={`absolute w-[1.5px] -translate-x-1/2 pointer-events-none transition-colors ${
+                      isSelected ? "bg-pl-purple z-20" : inWindow ? "bg-teal-400 z-10" : "bg-slate-300/80"
+                    }`}
+                  />
+                  {/* Event Pin Button */}
+                  <button
+                    type="button"
+                    style={{ left: `${leftPct}%`, top: `${topPx}px` }}
+                    onClick={() => {
+                      onSelectTimelineEvent(ev);
+                      onTriggerAnimation({
+                        kind,
+                        min: ev.minute,
+                        club: info.clubName,
+                        player: info.playerLine,
+                        sub: info.title,
+                      });
+                    }}
+                    className={`timeline-pin pointer-events-auto -translate-x-1/2 absolute h-6 px-1.5 py-0.5 rounded-md text-[10.5px] font-mono font-bold transition-all duration-150 flex items-center gap-1 cursor-pointer z-10 hover:z-30 hover:scale-115 shadow-sm ${badgeStyle} ${
+                      isSelected ? "ring-2 ring-pl-purple scale-110 z-30 shadow-lg" : ""
+                    }`}
+                    title={`${ev.minute}' ${info.title}`}
+                  >
+                    {isGoal && <BallIcon className="w-3 h-3 shrink-0" />}
+                    {isYellow && <YellowCardIcon className="w-2.5 h-3 shrink-0" />}
+                    {isRed && <RedCardIcon className="w-2.5 h-3 shrink-0" />}
+                    {isPenalty && <BallIcon className="w-3 h-3 text-purple-300 shrink-0" />}
+                    {isShot && <TargetIcon className="w-2.5 h-2.5 shrink-0" />}
+                    {isPressure && <TimerIcon className="w-2.5 h-2.5 shrink-0" />}
+                    {!isGoal && !isYellow && !isRed && !isPenalty && !isShot && !isPressure && (
+                      <SubIcon className="w-3 h-3 shrink-0" />
+                    )}
+                    <span>{ev.minute}&apos;</span>
+                  </button>
+                </React.Fragment>
+              );
+            })}
+
+            {/* AWAY TEAM EVENTS (BOTTOM LANE: Tiers 0, 1, 2) */}
+            {positionedAway.map((pos) => {
+              const { ev, leftPct, tier, inWindow, kind, isSelected } = pos;
+              const info = formatTimelineEventTitle(ev, homeCode, homeName, awayName);
+              const awayTiersTop = [110, 136, 162];
+              const topPx = awayTiersTop[tier];
+              const stemTop = 104;
+              const stemHeight = Math.max(0, topPx - stemTop);
+
+              const isGoal = kind === "goal";
+              const isRed = kind === "red";
+              const isYellow = kind === "yellow";
+              const isPenalty = ev.eventType.toLowerCase().includes("penalty");
+              const isShot = ev.eventType.toLowerCase().includes("shot");
+              const isPressure = ev.eventType.toLowerCase().includes("pressure");
+
+              let badgeStyle = "bg-white text-slate-700 border border-slate-300 hover:border-slate-500";
+              if (inWindow) {
+                if (isGoal) badgeStyle = "bg-emerald-600 text-white ring-2 ring-emerald-300 shadow-md";
+                else if (isRed) badgeStyle = "bg-red-600 text-white ring-2 ring-red-300 shadow-md";
+                else if (isYellow) badgeStyle = "bg-amber-400 text-slate-950 ring-2 ring-amber-200 shadow-md";
+                else if (isPenalty) badgeStyle = "bg-purple-700 text-white ring-2 ring-purple-300 shadow-md";
+                else if (isShot) badgeStyle = "bg-slate-700 text-white ring-2 ring-slate-300 shadow-md";
+                else if (isPressure) badgeStyle = "bg-indigo-600 text-white ring-2 ring-indigo-300 shadow-md";
+                else badgeStyle = "bg-sky-600 text-white ring-2 ring-sky-300 shadow-md";
+              } else {
+                if (isGoal) badgeStyle = "bg-emerald-50 text-emerald-800 border border-emerald-400 hover:bg-emerald-600 hover:text-white";
+                else if (isRed) badgeStyle = "bg-red-50 text-red-800 border border-red-400 hover:bg-red-600 hover:text-white";
+                else if (isYellow) badgeStyle = "bg-amber-50 text-amber-900 border border-amber-400 hover:bg-amber-400 hover:text-slate-950";
+                else if (isPenalty) badgeStyle = "bg-purple-50 text-purple-900 border border-purple-400 hover:bg-purple-700 hover:text-white";
+                else if (isShot) badgeStyle = "bg-white text-slate-600 border border-slate-300 hover:bg-slate-700 hover:text-white";
+                else if (isPressure) badgeStyle = "bg-indigo-50 text-indigo-800 border border-indigo-300 hover:bg-indigo-600 hover:text-white";
+                else badgeStyle = "bg-sky-50 text-sky-800 border border-sky-300 hover:bg-sky-600 hover:text-white";
+              }
+
+              return (
+                <React.Fragment key={ev.eventId}>
+                  {/* Stem line connecting pin to track */}
+                  <div
+                    style={{ left: `${leftPct}%`, top: `${stemTop}px`, height: `${stemHeight}px` }}
+                    className={`absolute w-[1.5px] -translate-x-1/2 pointer-events-none transition-colors ${
+                      isSelected ? "bg-pl-purple z-20" : inWindow ? "bg-teal-400 z-10" : "bg-slate-300/80"
+                    }`}
+                  />
+                  {/* Event Pin Button */}
+                  <button
+                    type="button"
+                    style={{ left: `${leftPct}%`, top: `${topPx}px` }}
+                    onClick={() => {
+                      onSelectTimelineEvent(ev);
+                      onTriggerAnimation({
+                        kind,
+                        min: ev.minute,
+                        club: info.clubName,
+                        player: info.playerLine,
+                        sub: info.title,
+                      });
+                    }}
+                    className={`timeline-pin pointer-events-auto -translate-x-1/2 absolute h-6 px-1.5 py-0.5 rounded-md text-[10.5px] font-mono font-bold transition-all duration-150 flex items-center gap-1 cursor-pointer z-10 hover:z-30 hover:scale-115 shadow-sm ${badgeStyle} ${
+                      isSelected ? "ring-2 ring-pl-purple scale-110 z-30 shadow-lg" : ""
+                    }`}
+                    title={`${ev.minute}' ${info.title}`}
+                  >
+                    {isGoal && <BallIcon className="w-3 h-3 shrink-0" />}
+                    {isYellow && <YellowCardIcon className="w-2.5 h-3 shrink-0" />}
+                    {isRed && <RedCardIcon className="w-2.5 h-3 shrink-0" />}
+                    {isPenalty && <BallIcon className="w-3 h-3 text-purple-300 shrink-0" />}
+                    {isShot && <TargetIcon className="w-2.5 h-2.5 shrink-0" />}
+                    {isPressure && <TimerIcon className="w-2.5 h-2.5 shrink-0" />}
+                    {!isGoal && !isYellow && !isRed && !isPenalty && !isShot && !isPressure && (
+                      <SubIcon className="w-3 h-3 shrink-0" />
+                    )}
+                    <span>{ev.minute}&apos;</span>
+                  </button>
+                </React.Fragment>
               );
             })}
           </div>
+
+          {/* Empty State when filters yield 0 events */}
+          {filteredTimeline.length === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-50/90 text-xs font-mono text-slate-500 z-20">
+              No events found for this filter combination.
+            </div>
+          )}
         </div>
 
         {/* Tactical Event Inspector Drawer (Real Data + /api/v1/explain) */}
