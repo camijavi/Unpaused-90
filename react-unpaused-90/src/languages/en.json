@@ -214,21 +214,12 @@
       "reportTitle": "90-Minute Personalized Match Report",
       "words": "words",
       "audioEstimate": "s audio",
-      "viewStory": "View Match Story",
-      "viewInsights": "View Key Moments",
       "playAudio": "Listen to Recap",
       "playingAudio": "Playing Recap...",
       "lengthOptions": {
         "1m": "1m Flash",
         "5m": "5m Deep",
         "full": "Full Match (500w+)"
-      },
-      "insightTypes": {
-        "GoalImpact": "Goal Impact",
-        "MomentumShift": "Momentum Shift",
-        "TacticalAdvantage": "Tactical Advantage",
-        "DisciplinaryImpact": "Disciplinary Impact",
-        "WinningMoment": "Winning Moment"
       }
     },
     "fullTimeDeck": {

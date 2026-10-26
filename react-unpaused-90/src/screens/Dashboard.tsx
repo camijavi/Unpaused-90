@@ -1299,7 +1299,6 @@ export const Dashboard: React.FC = () => {
             <FinalScoreContainer
               match={match}
               timeline={timeline}
-              insights={insights}
               fullTimeSummary={fullTimeSummary}
               isGeneratingSummary={isGeneratingSummary}
               onGenerateSummary={handleGenerateFullTimeSummary}
