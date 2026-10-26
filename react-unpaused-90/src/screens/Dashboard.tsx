@@ -3,16 +3,19 @@ import Navbar from "../components/Navbar";
 import LiveGrounds from "../components/LiveGrounds";
 import ScoreContainer, {
   formatTimelineEventTitle,
+  mapEventTypeToAnimationKind,
 } from "../components/ScoreContainer";
 import HeroConsole from "../components/HeroConsole";
 import Cards from "../components/Cards";
 import AudioPlayerDock from "../components/AudioPlayerDock";
+import { BallIcon, HeadphonesIcon } from "../components/Icons";
+import { useLanguage } from "../languages/LanguageContext";
 import {
   explainTimelineEvent,
   fetchMatchById,
-  fetchMatchInsights,
-  fetchMatchTimeline,
   generateCatchUp,
+  generatePersonalizedSummary,
+  resetMatchSimulation,
   synthesizeAudio,
 } from "../services/api";
 import type {
@@ -20,6 +23,7 @@ import type {
   EventAnimationPayload,
   GeneratedInsight,
   MatchData,
+  PersonalizedSummaryResponse,
   TimelineEvent,
 } from "../types/match";
 
@@ -32,14 +36,14 @@ const FALLBACK_MATCH: MatchData = {
   competition: "Premier League",
   season: "2026/27",
   stadium: "Emirates Stadium",
-  status: "FullTime",
-  currentMinute: 90,
+  status: "2nd Half",
+  currentMinute: 60,
   homeTeam: {
     teamId: "ARS",
     name: "Arsenal",
     coach: "Mikel Arteta",
     formation: "4-3-3",
-    score: 2,
+    score: 1,
     startingXI: [
       { playerId: "ARS01", name: "David Raya", number: 1, position: "GK", captain: false },
       { playerId: "ARS02", name: "Ben White", number: 4, position: "RB", captain: false },
@@ -90,11 +94,11 @@ const FALLBACK_MATCH: MatchData = {
   },
   statistics: {
     possession: { home: 54, away: 46 },
-    shots: { home: 14, away: 11 },
-    shotsOnTarget: { home: 6, away: 5 },
+    shots: { home: 9, away: 7 },
+    shotsOnTarget: { home: 4, away: 3 },
     passAccuracy: { home: 87, away: 84 },
-    corners: { home: 7, away: 5 },
-    fouls: { home: 9, away: 11 },
+    corners: { home: 5, away: 3 },
+    fouls: { home: 6, away: 7 },
   },
   timeline: [
     { eventId: "EV001", minute: 12, eventType: "Shot", team: "ARS", player: "Kai Havertz", onTarget: true },
@@ -102,9 +106,6 @@ const FALLBACK_MATCH: MatchData = {
     { eventId: "EV003", minute: 31, eventType: "Goal", team: "ARS", player: "Bukayo Saka", assist: "Martin Odegaard", importanceScore: 100 },
     { eventId: "EV004", minute: 43, eventType: "YellowCard", team: "LIV", player: "Alexis Mac Allister" },
     { eventId: "EV005", minute: 54, eventType: "Goal", team: "LIV", player: "Mohamed Salah", assist: "Dominik Szoboszlai", importanceScore: 95 },
-    { eventId: "EV006", minute: 66, eventType: "Substitution", team: "ARS", playerOut: "Gabriel Martinelli", playerIn: "Leandro Trossard" },
-    { eventId: "EV007", minute: 72, eventType: "PressureSequence", team: "ARS", durationSeconds: 114, importanceScore: 88 },
-    { eventId: "EV008", minute: 79, eventType: "Goal", team: "ARS", player: "Kai Havertz", assist: "Bukayo Saka", importanceScore: 100 },
   ],
   generatedInsights: [
     {
@@ -119,12 +120,6 @@ const FALLBACK_MATCH: MatchData = {
       summary: "Liverpool equalized through a fast transition led by Szoboszlai and Salah.",
       reason: "Arsenal's high defensive line left space behind Zinchenko.",
     },
-    {
-      minute: 79,
-      type: "WinningMoment",
-      summary: "Arsenal regained the lead late in the second half.",
-      reason: "Sustained wing pressure created a second-ball opportunity finished by Havertz.",
-    },
   ],
 };
 
@@ -135,31 +130,53 @@ function mapBiasToFavoriteTeam(bias: "neutral" | "arsenal" | "liverpool"): strin
 }
 
 export const Dashboard: React.FC = () => {
+  const { setLanguage: setGlobalLanguage, t } = useLanguage();
   const [match, setMatch] = useState<MatchData | null>(FALLBACK_MATCH);
   const [timeline, setTimeline] = useState<TimelineEvent[]>(FALLBACK_MATCH.timeline);
   const [insights, setInsights] = useState<GeneratedInsight[]>(
     FALLBACK_MATCH.generatedInsights
   );
+  const [initialStartMinute, setInitialStartMinute] = useState<number | null>(null);
+  const [subSeconds, setSubSeconds] = useState<number>(0);
 
   // Hero Console state
   const [stoppedMinute, setStoppedMinute] = useState<number>(30);
   const [mode, setMode] = useState<"casual" | "analyst" | "child">("casual");
-  const [bias, setBias] = useState<"neutral" | "arsenal" | "liverpool">("arsenal");
+  const [bias, setBias] = useState<"neutral" | "arsenal" | "liverpool">("neutral");
   const [length, setLength] = useState<"1m" | "5m" | "full">("1m");
   const [lang, setLang] = useState<"en" | "es">("en");
+
+  // Align global language with audio feed selection, eventhough user can select a different value than their global language value
+  const handleGlobalLanguageChange = useCallback(
+    (newLang: "en" | "es") => {
+      setGlobalLanguage(newLang);
+      setLang(newLang);
+    },
+    [setGlobalLanguage]
+  );
 
   // Visibility state: Hidden by default until user clicks "Catch Me Up & Auto-Play Audio"
   const [showCatchUpDeck, setShowCatchUpDeck] = useState<boolean>(false);
   const [showAudioDock, setShowAudioDock] = useState<boolean>(false);
 
+  // End-of-Match (90' FullTime) Summary state (Step 6)
+  const [fullTimeSummary, setFullTimeSummary] =
+    useState<PersonalizedSummaryResponse | null>(null);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState<boolean>(false);
+  const [showFullTimeBanner, setShowFullTimeBanner] = useState<boolean>(true);
+
   // LiveCatchUp & Event Inspector state
   const [catchUp, setCatchUp] = useState<CatchUpResponse | null>(null);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [generatingWindow, setGeneratingWindow] = useState<{
+    stopped: number;
+    current: number;
+  } | null>(null);
   const [statusBadgeText, setStatusBadgeText] = useState<string>(
-    "Synced to 30'–90' Window"
+    "Synced to Live Match Window"
   );
   const [selectedEvent, setSelectedEvent] = useState<TimelineEvent | null>(
-    FALLBACK_MATCH.timeline[4]
+    FALLBACK_MATCH.timeline[FALLBACK_MATCH.timeline.length - 1] ?? null
   );
   const [eventExplanation, setEventExplanation] = useState<{
     title: string;
@@ -182,11 +199,18 @@ export const Dashboard: React.FC = () => {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const currentBlobUrlRef = useRef<string | null>(null);
+  const speechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const speechTickerRef = useRef<number | null>(null);
   const fxTimeoutRef = useRef<number | null>(null);
   const generationIdRef = useRef<number>(0);
   const hasInitializedRef = useRef<boolean>(false);
+  const seenEventIdsRef = useRef<Set<string>>(new Set());
+  const prevMinuteRef = useRef<number>(60);
+  const minuteStartTimeRef = useRef<number>(Date.now());
+  const SECONDS_PER_SIMULATED_MINUTE = 30.0;
 
-  const currentMinute = match?.currentMinute ?? 90;
+  const currentMinute = match?.currentMinute ?? 60;
+  const isFullTime = currentMinute >= 90 || match?.status === "FullTime";
 
   // Stops any currently playing audio and revokes old Blob URLs so stale audio never replays
   const stopAndRevokeCurrentAudio = useCallback(() => {
@@ -199,6 +223,14 @@ export const Dashboard: React.FC = () => {
       URL.revokeObjectURL(currentBlobUrlRef.current);
       currentBlobUrlRef.current = null;
     }
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    if (speechTickerRef.current) {
+      window.clearInterval(speechTickerRef.current);
+      speechTickerRef.current = null;
+    }
+    speechUtteranceRef.current = null;
     setIsPlaying(false);
     setCurrentTime(0);
   }, []);
@@ -259,6 +291,84 @@ export const Dashboard: React.FC = () => {
     [playbackSpeed, stopAndRevokeCurrentAudio]
   );
 
+  // Instant browser-native speech synthesis fallback (runs 100% locally with 0ms latency)
+  const playBrowserSpeech = useCallback(
+    (text: string, language: "en" | "es", voiceName?: string | null) => {
+      stopAndRevokeCurrentAudio();
+      if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+        return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      speechUtteranceRef.current = utterance;
+
+      const voices = window.speechSynthesis.getVoices();
+      const isSpanish = language === "es";
+      const targetPrefix = isSpanish ? "es" : "en";
+      const prefersFemale =
+        voiceName?.toLowerCase().includes("ada") ||
+        voiceName?.toLowerCase().includes("dalia");
+
+      const matchedVoice =
+        voices.find((v) => {
+          if (!v.lang.toLowerCase().startsWith(targetPrefix)) return false;
+          const name = v.name.toLowerCase();
+          return prefersFemale
+            ? name.includes("female") ||
+                name.includes("dalia") ||
+                name.includes("sabina") ||
+                name.includes("helena")
+            : name.includes("male") ||
+                name.includes("jorge") ||
+                name.includes("george") ||
+                name.includes("david");
+        }) || voices.find((v) => v.lang.toLowerCase().startsWith(targetPrefix));
+
+      if (matchedVoice) {
+        utterance.voice = matchedVoice;
+      }
+      utterance.lang = isSpanish ? "es-MX" : "en-GB";
+      utterance.rate = playbackSpeed * 1.05;
+      utterance.pitch = 1.05;
+
+      const words = text.split(/\s+/).filter(Boolean).length;
+      const estimatedSec = Math.max(10, Math.round(words / 2.6));
+      setDuration(estimatedSec);
+      setCurrentTime(0);
+
+      utterance.onstart = () => {
+        setIsPlaying(true);
+        const start = Date.now();
+        if (speechTickerRef.current)
+          window.clearInterval(speechTickerRef.current);
+        speechTickerRef.current = window.setInterval(() => {
+          const elapsed = ((Date.now() - start) / 1000) * playbackSpeed;
+          setCurrentTime(Math.min(estimatedSec, Math.floor(elapsed)));
+        }, 250);
+      };
+
+      utterance.onend = () => {
+        setIsPlaying(false);
+        setCurrentTime(estimatedSec);
+        if (speechTickerRef.current) {
+          window.clearInterval(speechTickerRef.current);
+          speechTickerRef.current = null;
+        }
+      };
+
+      utterance.onerror = () => {
+        setIsPlaying(false);
+        if (speechTickerRef.current) {
+          window.clearInterval(speechTickerRef.current);
+          speechTickerRef.current = null;
+        }
+      };
+
+      window.speechSynthesis.speak(utterance);
+    },
+    [playbackSpeed, stopAndRevokeCurrentAudio]
+  );
+
   // Trigger a broadcast event animation overlay for 2.5s
   const handleTriggerAnimation = useCallback(
     (payload: EventAnimationPayload) => {
@@ -315,6 +425,203 @@ export const Dashboard: React.FC = () => {
     [bias, lang, match, mode]
   );
 
+  // Step 1 & Step 2: Initialize or Reset Match Simulation at a random minute (1..90)
+  const handleInitializeOrResetSimulation = useCallback(async () => {
+    try {
+      const matchData = await resetMatchSimulation("PL2027-001");
+      setMatch(matchData);
+      setTimeline(matchData.timeline);
+      setInsights(matchData.generatedInsights);
+      setInitialStartMinute(matchData.currentMinute);
+      setSubSeconds(0);
+      prevMinuteRef.current = matchData.currentMinute;
+      minuteStartTimeRef.current = Date.now();
+
+      // Record already-elapsed events at the starting minute so only new live events fire animations
+      seenEventIdsRef.current = new Set(matchData.timeline.map((e) => e.eventId));
+
+      // Default "Stopped Watching At" to half of the random starting minute (at least 1')
+      const defaultStopped = Math.max(1, Math.floor(matchData.currentMinute / 2));
+      setStoppedMinute(defaultStopped);
+
+      const latestEv =
+        matchData.timeline[matchData.timeline.length - 1] ?? null;
+      setSelectedEvent(latestEv);
+      setEventExplanation(null);
+      setFullTimeSummary(null);
+      setShowFullTimeBanner(true);
+    } catch (err) {
+      console.error("Failed to initialize/reset live match simulation:", err);
+    }
+  }, []);
+
+  // Initialize a random starting minute (1..90) on mount
+  useEffect(() => {
+    if (hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
+    handleInitializeOrResetSimulation();
+  }, [handleInitializeOrResetSimulation]);
+
+  // Broadcast clock simulated seconds ticker (00..59) synchronized to match minute progression
+  useEffect(() => {
+    if (isFullTime) {
+      setSubSeconds(0);
+      return;
+    }
+    const timer = window.setInterval(() => {
+      const elapsedRealSec = (Date.now() - minuteStartTimeRef.current) / 1000;
+      const simulatedSec = Math.min(
+        59,
+        Math.floor((elapsedRealSec / SECONDS_PER_SIMULATED_MINUTE) * 60)
+      );
+      setSubSeconds(simulatedSec);
+    }, 150);
+    return () => window.clearInterval(timer);
+  }, [isFullTime]);
+
+  // Step 3, 4 & 5: Poll backend every 2s to synchronize live clock, score, stats, and auto-trigger event animations
+  useEffect(() => {
+    if (isFullTime) return;
+
+    const pollInterval = window.setInterval(async () => {
+      try {
+        const liveMatch = await fetchMatchById("PL2027-001");
+        setMatch(liveMatch);
+        setTimeline(liveMatch.timeline);
+        setInsights(liveMatch.generatedInsights);
+
+        if (liveMatch.currentMinute !== prevMinuteRef.current) {
+          prevMinuteRef.current = liveMatch.currentMinute;
+          minuteStartTimeRef.current = Date.now();
+          setSubSeconds(0);
+        }
+
+        // Detect any newly occurred events as the simulated match clock advances
+        const newEvents = liveMatch.timeline.filter(
+          (ev) => !seenEventIdsRef.current.has(ev.eventId)
+        );
+
+        if (newEvents.length > 0) {
+          for (const ev of newEvents) {
+            seenEventIdsRef.current.add(ev.eventId);
+          }
+
+          // Focus the newest event in the inspector and trigger its broadcast animation
+          const latestNew = newEvents[newEvents.length - 1];
+          setSelectedEvent(latestNew);
+
+          const homeCode = liveMatch.homeTeam.teamId ?? "ARS";
+          const homeName = liveMatch.homeTeam.name ?? "Arsenal";
+          const awayName = liveMatch.awayTeam.name ?? "Liverpool";
+          const info = formatTimelineEventTitle(
+            latestNew,
+            homeCode,
+            homeName,
+            awayName
+          );
+          const kind = mapEventTypeToAnimationKind(latestNew.eventType);
+
+          handleTriggerAnimation({
+            kind,
+            min: latestNew.minute,
+            club: info.clubName,
+            player: info.playerLine,
+            sub: info.title,
+          });
+        }
+      } catch (err) {
+        console.error("Live match polling error:", err);
+      }
+    }, 2000);
+
+    return () => window.clearInterval(pollInterval);
+  }, [handleTriggerAnimation, isFullTime]);
+
+  // Step 6: Generate Full-Time Match Summary (`POST /api/v1/personalized-summary`)
+  const handleGenerateFullTimeSummary = useCallback(
+    async (autoPlayAudio: boolean, unlockedByGesture = false) => {
+      const myGenId = ++generationIdRef.current;
+
+      if (unlockedByGesture && autoPlayAudio) {
+        unlockAudioElementOnGesture();
+      } else if (autoPlayAudio) {
+        stopAndRevokeCurrentAudio();
+      }
+
+      setIsGeneratingSummary(true);
+      setShowFullTimeBanner(true);
+      if (autoPlayAudio) {
+        setShowAudioDock(true);
+        setTranscriptLine("Generating Full-Time 90' Match Summary...");
+      }
+
+      try {
+        const res = await generatePersonalizedSummary({
+          matchId: match?.matchId ?? "PL2027-001",
+          mode,
+          favoriteTeam: mapBiasToFavoriteTeam(bias),
+          language: lang,
+          length,
+          includeAudio: false,
+        });
+
+        if (myGenId !== generationIdRef.current) return;
+        setFullTimeSummary(res);
+        setIsGeneratingSummary(false);
+
+        const assignedSpeaker =
+          res.voice && res.voice.toLowerCase().includes("ada")
+            ? "Ada"
+            : "Ollie";
+        setSpeaker(assignedSpeaker);
+
+        if (res.story) {
+          setTranscriptLine(res.story);
+        }
+
+        if (autoPlayAudio && res.story) {
+          setIsSynthesizing(true);
+          try {
+            const audioRes = await synthesizeAudio({
+              text: res.story,
+              voice: res.voice ?? null,
+              language: lang,
+            });
+            if (myGenId !== generationIdRef.current) return;
+            setIsSynthesizing(false);
+            if (audioRes.audioUrl) {
+              playFreshAudioDataUrl(audioRes.audioUrl);
+            } else {
+              playBrowserSpeech(res.story, lang, audioRes.voice);
+            }
+          } catch (audioErr) {
+            console.warn("Full-time summary audio fallback to native speech:", audioErr);
+            if (myGenId === generationIdRef.current) {
+              setIsSynthesizing(false);
+              playBrowserSpeech(res.story, lang, res.voice);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to generate full-time match summary:", err);
+        if (myGenId === generationIdRef.current) {
+          setIsGeneratingSummary(false);
+        }
+      }
+    },
+    [
+      bias,
+      lang,
+      length,
+      match?.matchId,
+      mode,
+      playBrowserSpeech,
+      playFreshAudioDataUrl,
+      stopAndRevokeCurrentAudio,
+      unlockAudioElementOnGesture,
+    ]
+  );
+
   // Generate Catch-Up intelligence cards + synthesize & auto-play TTS audio
   const runCatchUp = useCallback(
     async (autoPlayAudio: boolean, unlockedByGesture = false) => {
@@ -331,18 +638,33 @@ export const Dashboard: React.FC = () => {
       }
 
       setIsGenerating(true);
-      setStatusBadgeText("Generating Live AI Catch-Up...");
-      setTranscriptLine("Generating your live personalized match recap...");
+      setStatusBadgeText(
+        lang === "es"
+          ? "Generando Resumen Catch-Up con IA..."
+          : "Generating Live AI Catch-Up..."
+      );
+      setTranscriptLine(
+        lang === "es"
+          ? "Generando tu resumen de partido en vivo..."
+          : "Generating your live personalized match recap..."
+      );
 
       const activeMatchId = match?.matchId ?? "PL2027-001";
       const targetCurrentMin = match?.currentMinute ?? 90;
+      const clampedStopped = Math.min(
+        stoppedMinute,
+        Math.max(1, targetCurrentMin - 1)
+      );
+
+      // Lock the generating window immediately so the button display NEVER drifts or updates
+      setGeneratingWindow({ stopped: clampedStopped, current: targetCurrentMin });
 
       let res: CatchUpResponse;
       try {
         // Step 1: Fetch the 4 intelligence cards first (includeAudio: false)
         res = await generateCatchUp({
           matchId: activeMatchId,
-          lastViewedMinute: stoppedMinute,
+          lastViewedMinute: clampedStopped,
           currentMinute: targetCurrentMin,
           viewMode: mode,
           favoriteTeam: mapBiasToFavoriteTeam(bias),
@@ -355,11 +677,18 @@ export const Dashboard: React.FC = () => {
         if (myGenId === generationIdRef.current) {
           setIsGenerating(false);
           setIsSynthesizing(false);
+          setGeneratingWindow(null);
           const msg = err instanceof Error ? err.message : String(err);
-          setStatusBadgeText("Catch-Up Request Failed");
+          setStatusBadgeText(
+            lang === "es"
+              ? "Error en Solicitud Catch-Up"
+              : "Catch-Up Request Failed"
+          );
           setTranscriptLine(`Catch-Up error: ${msg}`);
         }
         return;
+      } finally {
+        setGeneratingWindow(null);
       }
 
       if (myGenId !== generationIdRef.current) return;
@@ -367,7 +696,9 @@ export const Dashboard: React.FC = () => {
       setCatchUp(res);
       setIsGenerating(false);
       setStatusBadgeText(
-        `Synced to ${stoppedMinute}'–${targetCurrentMin}' Window`
+        lang === "es"
+          ? `Sincronizado a ventana ${clampedStopped}'–${targetCurrentMin}'`
+          : `Synced to ${clampedStopped}'–${targetCurrentMin}' Window`
       );
 
       const assignedSpeaker =
@@ -392,7 +723,11 @@ export const Dashboard: React.FC = () => {
       // Step 2: Synthesize & auto-play audio
       if (autoPlayAudio && narrationScript) {
         setIsSynthesizing(true);
-        setStatusBadgeText("Synthesizing British AI Audio...");
+        setStatusBadgeText(
+          lang === "es"
+            ? "Sintetizando Audio AI en Español..."
+            : "Synthesizing British AI Audio..."
+        );
         try {
           const audioRes = await synthesizeAudio({
             text: narrationScript,
@@ -403,7 +738,9 @@ export const Dashboard: React.FC = () => {
           if (myGenId !== generationIdRef.current) return;
           setIsSynthesizing(false);
           setStatusBadgeText(
-            `Synced to ${stoppedMinute}'–${targetCurrentMin}' Window`
+            lang === "es"
+              ? `Sincronizado a ventana ${clampedStopped}'–${targetCurrentMin}'`
+              : `Synced to ${clampedStopped}'–${targetCurrentMin}' Window`
           );
 
           if (audioRes.voice) {
@@ -413,14 +750,19 @@ export const Dashboard: React.FC = () => {
           }
           if (audioRes.audioUrl) {
             playFreshAudioDataUrl(audioRes.audioUrl);
+          } else {
+            playBrowserSpeech(narrationScript, lang, audioRes.voice);
           }
         } catch (audioErr) {
-          console.error("Error in synthesizeAudio:", audioErr);
+          console.warn("Cloud audio fallback to native speech:", audioErr);
           if (myGenId === generationIdRef.current) {
             setIsSynthesizing(false);
             setStatusBadgeText(
-              `Synced to ${stoppedMinute}'–${targetCurrentMin}' Window`
+              lang === "es"
+                ? `Sincronizado a ventana ${clampedStopped}'–${targetCurrentMin}'`
+                : `Synced to ${clampedStopped}'–${targetCurrentMin}' Window`
             );
+            playBrowserSpeech(narrationScript, lang, res.voice);
           }
         }
       }
@@ -431,40 +773,13 @@ export const Dashboard: React.FC = () => {
       length,
       match,
       mode,
+      playBrowserSpeech,
       playFreshAudioDataUrl,
       stopAndRevokeCurrentAudio,
       stoppedMinute,
       unlockAudioElementOnGesture,
     ]
   );
-
-  // Only load match metadata, timeline, and insights on mount (do NOT auto-generate catch-up or show cards/dock)
-  useEffect(() => {
-    if (hasInitializedRef.current) return;
-    hasInitializedRef.current = true;
-
-    async function loadInitialData() {
-      try {
-        const [matchData, timelineData, insightsData] = await Promise.all([
-          fetchMatchById("PL2027-001"),
-          fetchMatchTimeline("PL2027-001"),
-          fetchMatchInsights("PL2027-001"),
-        ]);
-        setMatch(matchData);
-        setTimeline(timelineData);
-        setInsights(insightsData);
-        const defaultEv =
-          timelineData.find((e) => e.eventType === "Goal" && e.team === "LIV") ??
-          timelineData[0] ??
-          null;
-        setSelectedEvent(defaultEv);
-      } catch (err) {
-        console.error("Failed to load initial match data from backend:", err);
-      }
-    }
-
-    loadInitialData();
-  }, []);
 
   // Handle "Pass Mic to Ada/Ollie" button in Audio Dock
   const handleSwitchSpeaker = async () => {
@@ -484,7 +799,7 @@ export const Dashboard: React.FC = () => {
         ]
           .filter(Boolean)
           .join("\n\n")
-      : transcriptLine;
+      : fullTimeSummary?.story || transcriptLine;
 
     if (!narrationScript) return;
 
@@ -501,16 +816,35 @@ export const Dashboard: React.FC = () => {
       setIsSynthesizing(false);
       if (audioRes.audioUrl) {
         playFreshAudioDataUrl(audioRes.audioUrl);
+      } else {
+        playBrowserSpeech(narrationScript, lang, nextVoice);
       }
     } catch (err) {
-      console.error("Failed to switch speaker audio:", err);
+      console.warn("Failed to switch speaker audio via cloud, falling back to native speech:", err);
       if (myGenId === generationIdRef.current) {
         setIsSynthesizing(false);
+        playBrowserSpeech(narrationScript, lang, nextVoice);
       }
     }
   };
 
   const handleTogglePlay = () => {
+    // If Web Speech API is speaking or paused
+    if (
+      typeof window !== "undefined" &&
+      "speechSynthesis" in window &&
+      window.speechSynthesis.speaking
+    ) {
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+        setIsPlaying(true);
+      } else {
+        window.speechSynthesis.pause();
+        setIsPlaying(false);
+      }
+      return;
+    }
+
     const audio = audioRef.current;
     if (
       !audio ||
@@ -560,14 +894,24 @@ export const Dashboard: React.FC = () => {
         className="fixed top-1/3 -right-36 w-[28rem] h-[28rem] rounded-full bg-teal-300/35 blur-3xl pointer-events-none transition-all duration-700"
       ></div>
 
-      {/* 1. Midnight Obsidian Broadcast Navbar with Sky MNF Slanted Bug (Brief C) */}
-      <Navbar />
+      {/* 1. Midnight Obsidian Broadcast Navbar with Sky MNF Slanted Bug (Brief C) + Live Clock */}
+      <Navbar
+        currentMinute={currentMinute}
+        subSeconds={subSeconds}
+        status={match?.status}
+        onResetSimulation={handleInitializeOrResetSimulation}
+        onChangeLanguage={handleGlobalLanguageChange}
+      />
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-5 space-y-6">
         <div id="view-dashboard" className="space-y-6">
-          {/* 2. Live Grounds Bar (SVG Ball Icon, Arsenal vs Liverpool Only) */}
-          <LiveGrounds match={match} />
+          {/* 2. Live Grounds Bar (SVG Ball Icon, Arsenal vs Liverpool + Simulation Reset) */}
+          <LiveGrounds
+            match={match}
+            initialStartMinute={initialStartMinute}
+            onResetSimulation={handleInitializeOrResetSimulation}
+          />
 
           {/* 3. ScoreContainer + Real Match Timeline + Separate Event Animations */}
           <ScoreContainer
@@ -583,6 +927,115 @@ export const Dashboard: React.FC = () => {
             onSelectTimelineEvent={handleSelectTimelineEvent}
           />
 
+          {/* Step 6: End-of-Match (90' FullTime) Final Score & Match Summary Card */}
+          {isFullTime && showFullTimeBanner && (
+            <section
+              aria-label="Full-Time Match Summary"
+              className="broadcast-slab rounded-2xl p-5 sm:p-6 border-2 border-emerald-500/40 bg-gradient-to-br from-white via-emerald-50/30 to-teal-50/40 relative"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-200">
+                <div className="flex items-center gap-3">
+                  <span className="px-3 py-1 rounded-md bg-emerald-600 text-white font-mono text-xs font-extrabold uppercase tracking-wider shadow-sm">
+                    {t.dashboard.fullTimeBanner.title}
+                  </span>
+                  <div>
+                    <h2 className="text-xl sm:text-2xl font-display font-black uppercase tracking-wide text-slate-900">
+                      Final Score: {match?.homeTeam.name ?? "Arsenal"}{" "}
+                      {match?.homeTeam.score ?? 2} –{" "}
+                      {match?.awayTeam.score ?? 1}{" "}
+                      {match?.awayTeam.name ?? "Liverpool"}
+                    </h2>
+                    <p className="text-xs font-mono text-slate-600">
+                      All 90 minutes &amp; scheduled events processed •{" "}
+                      {timeline.length} key events • Possession{" "}
+                      {match?.statistics.possession.home ?? 54}%–
+                      {match?.statistics.possession.away ?? 46}%
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={isGeneratingSummary}
+                    onClick={() => handleGenerateFullTimeSummary(true, true)}
+                    className="px-4 py-2 rounded-xl font-display font-black uppercase text-sm tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow flex items-center gap-2 transition-all cursor-pointer disabled:opacity-60"
+                  >
+                    <BallIcon className="w-4 h-4 text-white shrink-0" />
+                    <span>
+                      {isGeneratingSummary
+                        ? t.dashboard.fullTimeBanner.generatingBtn
+                        : fullTimeSummary
+                          ? t.dashboard.fullTimeBanner.generateBtn + " ↻"
+                          : t.dashboard.fullTimeBanner.generateBtn}
+                    </span>
+                    <HeadphonesIcon className="w-4 h-4 text-white shrink-0" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowFullTimeBanner(false)}
+                    aria-label="Close Full-Time Summary"
+                    title="Close Full-Time Summary"
+                    className="w-8 h-8 rounded-lg bg-white hover:bg-red-50 text-slate-500 hover:text-red-600 border border-slate-200 hover:border-red-300 flex items-center justify-center transition-colors cursor-pointer"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {fullTimeSummary ? (
+                <div className="bg-white/90 rounded-xl p-4 sm:p-5 border border-emerald-200 shadow-inner space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono text-slate-500">
+                    <span className="font-bold text-emerald-700 uppercase">
+                      90-Minute Personalized Match Report ({fullTimeSummary.mode}{" "}
+                      • {fullTimeSummary.favoriteTeam})
+                    </span>
+                    <span>
+                      {fullTimeSummary.wordCount} words • ~
+                      {fullTimeSummary.estimatedDurationSeconds}s audio
+                    </span>
+                  </div>
+                  <div className="text-sm sm:text-base text-slate-800 leading-relaxed whitespace-pre-line">
+                    {fullTimeSummary.story}
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {insights.map((ins, idx) => (
+                    <div
+                      key={`${ins.minute}-${idx}`}
+                      className="bg-white rounded-xl p-3.5 border border-slate-200 shadow-sm"
+                    >
+                      <div className="flex items-center justify-between text-xs font-mono mb-1">
+                        <span className="font-extrabold text-pl-purple">
+                          {ins.minute}&apos; • {ins.type}
+                        </span>
+                      </div>
+                      <p className="text-xs sm:text-sm font-bold text-slate-900">
+                        {ins.summary}
+                      </p>
+                      <p className="text-xs text-slate-600 mt-1">
+                        {ins.reason}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
           {/* 4. Hero Console */}
           <HeroConsole
             stoppedMinute={stoppedMinute}
@@ -591,7 +1044,8 @@ export const Dashboard: React.FC = () => {
             bias={bias}
             length={length}
             lang={lang}
-            isGenerating={isGenerating || isSynthesizing}
+            isGenerating={isGenerating}
+            generatingWindow={generatingWindow}
             onChangeStoppedMinute={setStoppedMinute}
             onChangeMode={setMode}
             onChangeBias={setBias}

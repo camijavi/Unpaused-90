@@ -7,18 +7,20 @@ namespace NETUnpaused90.Services;
 
 /// <summary>
 /// Shared Singleton TokenCredential that caches Entra ID access tokens per scope in memory AND on disk,
-/// and enables MSAL TokenCachePersistenceOptions so a single sign-in silently refreshes across all scopes
-/// (Blob Storage, Azure OpenAI, Azure Speech, and ARM) and survives server restarts.
+/// and leverages MSAL persistent token cache and silent credentials so access tokens are automatically
+/// refreshed without blocking server requests or hanging in non-interactive background sessions.
 /// </summary>
 public class AppTokenCredential : TokenCredential
 {
+    private readonly SharedTokenCacheCredential _sharedCacheCredential;
+    private readonly DefaultAzureCredential _defaultAzureCredential;
     private readonly AzureCliCredential _cliCredential;
     private readonly InteractiveBrowserCredential _browserCredential;
-    private readonly TokenCredential? _prodCredential;
     private readonly ILogger<AppTokenCredential> _logger;
     private readonly string _diskCachePath;
     private readonly ConcurrentDictionary<string, AccessToken> _tokenCache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly SemaphoreSlim _authLock = new(1, 1);
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _scopeLocks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _scopeCoolDown = new(StringComparer.OrdinalIgnoreCase);
 
     private record CachedTokenDto(string Token, DateTimeOffset ExpiresOn);
 
@@ -42,10 +44,21 @@ public class AppTokenCredential : TokenCredential
             UnsafeAllowUnencryptedStorage = true
         };
 
+        _sharedCacheCredential = new SharedTokenCacheCredential(new SharedTokenCacheCredentialOptions
+        {
+            TenantId = tenantId,
+            TokenCachePersistenceOptions = persistenceOptions
+        });
+
+        _defaultAzureCredential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
+        {
+            TenantId = tenantId
+        });
+
         _cliCredential = new AzureCliCredential(new AzureCliCredentialOptions
         {
             TenantId = tenantId,
-            ProcessTimeout = TimeSpan.FromSeconds(3)
+            ProcessTimeout = TimeSpan.FromSeconds(2)
         });
 
         _browserCredential = new InteractiveBrowserCredential(new InteractiveBrowserCredentialOptions
@@ -53,11 +66,6 @@ public class AppTokenCredential : TokenCredential
             TenantId = tenantId,
             TokenCachePersistenceOptions = persistenceOptions
         });
-
-        if (!env.IsDevelopment())
-        {
-            _prodCredential = new DefaultAzureCredential();
-        }
     }
 
     public override AccessToken GetToken(TokenRequestContext requestContext, CancellationToken cancellationToken)
@@ -71,13 +79,26 @@ public class AppTokenCredential : TokenCredential
     {
         var scopeKey = string.Join(" ", requestContext.Scopes);
 
+        // 1. Check in-memory token cache
         if (_tokenCache.TryGetValue(scopeKey, out var cached) &&
             cached.ExpiresOn > DateTimeOffset.UtcNow.AddMinutes(2))
         {
             return cached;
         }
 
-        await _authLock.WaitAsync(cancellationToken);
+        // Check if this scope failed recently (cooldown prevents repeated 5-10s hangs on expired tokens)
+        if (_scopeCoolDown.TryGetValue(scopeKey, out var coolDownUntil) && DateTimeOffset.UtcNow < coolDownUntil)
+        {
+            if (_tokenCache.TryGetValue(scopeKey, out var stale) && !string.IsNullOrWhiteSpace(stale.Token))
+            {
+                return stale;
+            }
+            throw new InvalidOperationException($"Entra ID token acquisition in cooldown for scope '{scopeKey}'.");
+        }
+
+        // Use per-scope locks so token requests for different scopes never block each other
+        var scopeLock = _scopeLocks.GetOrAdd(scopeKey, _ => new SemaphoreSlim(1, 1));
+        await scopeLock.WaitAsync(cancellationToken);
         try
         {
             if (_tokenCache.TryGetValue(scopeKey, out cached) &&
@@ -86,39 +107,99 @@ public class AppTokenCredential : TokenCredential
                 return cached;
             }
 
-            if (_prodCredential is not null)
+            if (_scopeCoolDown.TryGetValue(scopeKey, out coolDownUntil) && DateTimeOffset.UtcNow < coolDownUntil)
             {
-                var prodToken = await _prodCredential.GetTokenAsync(requestContext, cancellationToken);
-                _tokenCache[scopeKey] = prodToken;
-                SaveTokensToDisk();
-                return prodToken;
+                if (_tokenCache.TryGetValue(scopeKey, out var stale) && !string.IsNullOrWhiteSpace(stale.Token))
+                {
+                    return stale;
+                }
+                throw new InvalidOperationException($"Entra ID token acquisition in cooldown for scope '{scopeKey}'.");
             }
 
-            // 1. Try Azure CLI quickly (3-second timeout so it never hangs)
+            // 2. Try SharedTokenCacheCredential (silently reuses persistent MSAL refresh token without browser prompts)
             try
             {
-                using var cliCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                cliCts.CancelAfter(TimeSpan.FromSeconds(3));
-                var cliToken = await _cliCredential.GetTokenAsync(requestContext, cliCts.Token);
+                using var silentCts = new CancellationTokenSource(TimeSpan.FromSeconds(1.5));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, silentCts.Token);
+                var silentToken = await _sharedCacheCredential.GetTokenAsync(requestContext, linkedCts.Token);
+                if (!string.IsNullOrWhiteSpace(silentToken.Token))
+                {
+                    _tokenCache[scopeKey] = silentToken;
+                    SaveTokensToDisk();
+                    _logger.LogInformation("Silently refreshed Entra ID token for scope '{Scope}' from MSAL cache.", scopeKey);
+                    return silentToken;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug("Silent MSAL cache check bypassed ({Message}).", ex.Message);
+            }
+
+            // 3. Try DefaultAzureCredential (Managed Identity, Environment, VS/VSCode credentials)
+            try
+            {
+                using var defaultCts = new CancellationTokenSource(TimeSpan.FromSeconds(1.5));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, defaultCts.Token);
+                var defaultToken = await _defaultAzureCredential.GetTokenAsync(requestContext, linkedCts.Token);
+                if (!string.IsNullOrWhiteSpace(defaultToken.Token))
+                {
+                    _tokenCache[scopeKey] = defaultToken;
+                    SaveTokensToDisk();
+                    return defaultToken;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug("DefaultAzureCredential check bypassed ({Message}).", ex.Message);
+            }
+
+            // 4. Try Azure CLI quickly (1-second timeout)
+            try
+            {
+                using var cliCts = new CancellationTokenSource(TimeSpan.FromSeconds(1.0));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cliCts.Token);
+                var cliToken = await _cliCredential.GetTokenAsync(requestContext, linkedCts.Token);
                 _tokenCache[scopeKey] = cliToken;
                 SaveTokensToDisk();
                 return cliToken;
             }
             catch
             {
-                // Fall through to persistent InteractiveBrowserCredential
+                // Fall through
             }
 
-            // 2. Use InteractiveBrowserCredential with persistent MSAL cache (reuses refresh token silently after 1st login)
-            _logger.LogInformation("Acquiring Entra ID token for scope '{Scope}'...", scopeKey);
-            var browserToken = await _browserCredential.GetTokenAsync(requestContext, cancellationToken);
-            _tokenCache[scopeKey] = browserToken;
-            SaveTokensToDisk();
-            return browserToken;
+            // 5. As a bounded fallback, try InteractiveBrowserCredential only if interactive with a 2-second timeout
+            if (Environment.UserInteractive)
+            {
+                try
+                {
+                    using var browserCts = new CancellationTokenSource(TimeSpan.FromSeconds(2.0));
+                    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, browserCts.Token);
+                    var browserToken = await _browserCredential.GetTokenAsync(requestContext, linkedCts.Token);
+                    _tokenCache[scopeKey] = browserToken;
+                    SaveTokensToDisk();
+                    return browserToken;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("Interactive token acquisition skipped ({Message}).", ex.Message);
+                }
+            }
+
+            // 6. Set cooldown so we don't repeat the multi-second chain on every incoming request
+            _scopeCoolDown[scopeKey] = DateTimeOffset.UtcNow.AddMinutes(2);
+
+            // 7. Return existing cached token if available (even if close to expiration) rather than failing
+            if (_tokenCache.TryGetValue(scopeKey, out var staleToken) && !string.IsNullOrWhiteSpace(staleToken.Token))
+            {
+                return staleToken;
+            }
+
+            throw new InvalidOperationException($"Unable to obtain Entra ID token for scope '{scopeKey}'.");
         }
         finally
         {
-            _authLock.Release();
+            scopeLock.Release();
         }
     }
 
@@ -131,10 +212,9 @@ public class AppTokenCredential : TokenCredential
             var dict = JsonSerializer.Deserialize<Dictionary<string, CachedTokenDto>>(json);
             if (dict is null) return;
 
-            var now = DateTimeOffset.UtcNow.AddMinutes(2);
             foreach (var kvp in dict)
             {
-                if (kvp.Value.ExpiresOn > now && !string.IsNullOrWhiteSpace(kvp.Value.Token))
+                if (!string.IsNullOrWhiteSpace(kvp.Value.Token))
                 {
                     _tokenCache[kvp.Key] = new AccessToken(kvp.Value.Token, kvp.Value.ExpiresOn);
                 }

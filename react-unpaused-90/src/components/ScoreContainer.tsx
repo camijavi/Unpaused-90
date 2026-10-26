@@ -19,6 +19,7 @@ import {
   SubIcon,
   YellowCardIcon,
 } from "./Icons";
+import { useLanguage } from "../languages/LanguageContext";
 
 interface ScoreContainerProps {
   match: MatchData | null;
@@ -132,19 +133,33 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
   onTriggerAnimation,
   onSelectTimelineEvent,
 }) => {
+  const { t } = useLanguage();
   const homeCode = match?.homeTeam.teamId ?? "ARS";
   const awayCode = match?.awayTeam.teamId ?? "LIV";
   const homeName = match?.homeTeam.name ?? "Arsenal";
   const awayName = match?.awayTeam.name ?? "Liverpool";
   const homeFormation = match?.homeTeam.formation ?? "4-3-3";
   const awayFormation = match?.awayTeam.formation ?? "4-2-3-1";
-  const homeScore = match?.homeTeam.score ?? 2;
-  const awayScore = match?.awayTeam.score ?? 1;
+  const homeScore = match?.homeTeam.score ?? 0;
+  const awayScore = match?.awayTeam.score ?? 0;
   const competition = match?.competition ?? "Premier League";
   const season = match?.season ?? "2026/27";
   const stadium = match?.stadium ?? "Emirates Stadium";
   const possessionHome = match?.statistics.possession.home ?? 54;
   const possessionAway = match?.statistics.possession.away ?? 46;
+  const cornersHome = match?.statistics.corners.home ?? 0;
+  const cornersAway = match?.statistics.corners.away ?? 0;
+  const foulsHome = match?.statistics.fouls.home ?? 0;
+  const foulsAway = match?.statistics.fouls.away ?? 0;
+
+  const isFullTime = currentMinute >= 90 || match?.status === "FullTime";
+  const statusLabel = isFullTime
+    ? t.scoreContainer.halves.fullTime.toUpperCase()
+    : match?.status === "Half Time" || currentMinute === 45
+      ? t.scoreContainer.halves.halfTime.toUpperCase()
+      : currentMinute < 45
+        ? t.scoreContainer.halves.firstHalf.toUpperCase()
+        : t.scoreContainer.halves.secondHalf.toUpperCase();
 
   // Derive real goal scorers and disciplinary notes from fetched timeline
   const homeGoals = timeline.filter(
@@ -188,11 +203,7 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
   );
 
   // Active event for the inspector drawer
-  const activeEv =
-    selectedEvent ??
-    timeline.find((e) => e.eventType === "Goal" && e.team === awayCode) ??
-    timeline[0] ??
-    null;
+  const activeEv = selectedEvent ?? timeline[timeline.length - 1] ?? null;
 
   const formattedActiveEv = activeEv
     ? formatTimelineEventTitle(activeEv, homeCode, homeName, awayName)
@@ -205,7 +216,9 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
   const displayTitle =
     eventExplanation?.title ||
     formattedActiveEv?.title ||
-    "Select a timeline event pin to inspect tactical context";
+    (timeline.length === 0
+      ? `Match in early opening stages (${currentMinute}') — awaiting first major event`
+      : "Select a timeline event pin to inspect tactical context");
 
   const displayDesc = eventExplanation?.loading
     ? "Generating live AI tactical breakdown from Azure OpenAI..."
@@ -213,61 +226,10 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
       (matchingInsight
         ? `Why It Matters: ${matchingInsight.summary} — ${matchingInsight.reason}`
         : formattedActiveEv?.fallbackDesc ||
-          "Click any event pin on the match timeline above to view its tactical explanation.");
+          "As the live match clock advances, key events automatically appear on the timeline above.");
 
   const isShaking =
     activeAnimation?.kind === "goal" || activeAnimation?.kind === "red";
-
-  const handleQuickFx = (kind: AnimationKind) => {
-    if (kind === "goal") {
-      const goalEv =
-        timeline.find((e) => e.eventType === "Goal" && e.team === awayCode) ??
-        timeline.find((e) => e.eventType === "Goal");
-      if (goalEv) {
-        const info = formatTimelineEventTitle(
-          goalEv,
-          homeCode,
-          homeName,
-          awayName,
-        );
-        onTriggerAnimation({
-          kind: "goal",
-          min: goalEv.minute,
-          club: info.clubName,
-          player: info.playerLine,
-          sub: info.title,
-        });
-        return;
-      }
-    }
-    if (kind === "yellow") {
-      const yellowEv = timeline.find((e) => e.eventType === "YellowCard");
-      if (yellowEv) {
-        const info = formatTimelineEventTitle(
-          yellowEv,
-          homeCode,
-          homeName,
-          awayName,
-        );
-        onTriggerAnimation({
-          kind: "yellow",
-          min: yellowEv.minute,
-          club: info.clubName,
-          player: info.playerLine,
-          sub: info.title,
-        });
-        return;
-      }
-    }
-    // Red card or fallback
-    onTriggerAnimation({
-      kind,
-      min: 58,
-      club: awayName.toUpperCase(),
-      player: "Ibrahima Konaté (58')",
-      sub: "SENT OFF! • LAST-MAN PROFESSIONAL FOUL",
-    });
-  };
 
   return (
     <section
@@ -290,6 +252,34 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
           <span>•</span>
           <span id="match-venue" className="text-slate-900 font-bold">
             {stadium}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 text-[11px] font-mono">
+          <span>
+            Corners:{" "}
+            <strong className="text-slate-900">
+              {cornersHome}–{cornersAway}
+            </strong>
+          </span>
+          <span>•</span>
+          <span>
+            Fouls:{" "}
+            <strong className="text-slate-900">
+              {foulsHome}–{foulsAway}
+            </strong>
+          </span>
+          <span>•</span>
+          <span
+            className={`px-2 py-0.5 rounded font-bold uppercase ${
+              isFullTime
+                ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                : "bg-red-100 text-red-700 border border-red-300"
+            }`}
+          >
+            {isFullTime
+              ? "FINAL SCORE • 90' FT"
+              : `LIVE SIMULATION • ${currentMinute}'`}
           </span>
         </div>
       </div>
@@ -393,8 +383,8 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
                   <BallIcon className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
                   <span>
                     {homeScorersText} • Shots:{" "}
-                    {match?.statistics.shots.home ?? 14} (
-                    {match?.statistics.shotsOnTarget.home ?? 6} OT)
+                    {match?.statistics.shots.home ?? 0} (
+                    {match?.statistics.shotsOnTarget.home ?? 0} OT)
                   </span>
                 </p>
               </div>
@@ -414,10 +404,10 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
                     className="px-3.5 py-1 rounded-md bg-pl-purple text-mint-bright font-mono text-base sm:text-lg font-extrabold tracking-tight shadow"
                     id="scoreboard-minute"
                   >
-                    {currentMinute}&apos;
+                    {isFullTime ? "90' FT" : `${currentMinute}'`}
                   </span>
                   <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-slate-500 mt-1.5">
-                    2ND HALF
+                    {statusLabel}
                   </span>
                 </div>
                 <span
@@ -427,12 +417,27 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
                   {awayScore}
                 </span>
               </div>
-              <span
+              <div
                 id="match-possession"
-                className="mt-3 px-3.5 py-1 rounded-full bg-slate-900/85 backdrop-blur-md border border-white/20 text-xs font-mono font-bold text-white shadow"
+                className="mt-3 px-3.5 py-1.5 rounded-full bg-slate-900/85 backdrop-blur-md border border-white/20 text-xs font-mono font-bold text-white shadow flex items-center gap-2.5"
               >
-                POSSESSION: {possessionHome}% – {possessionAway}%
-              </span>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+                <span>
+                  {t.scoreContainer.possession} <strong className="text-white">{possessionHome}%</strong> – <strong className="text-white">{possessionAway}%</strong>
+                </span>
+                <div className="w-16 h-2 bg-slate-700/80 rounded-full overflow-hidden flex border border-white/10 shrink-0">
+                  <div
+                    className="bg-red-500 h-full transition-all duration-700"
+                    style={{ width: `${possessionHome}%` }}
+                    title={`${homeCode}: ${possessionHome}%`}
+                  ></div>
+                  <div
+                    className="bg-cyan-400 h-full transition-all duration-700"
+                    style={{ width: `${possessionAway}%` }}
+                    title={`${awayCode}: ${possessionAway}%`}
+                  ></div>
+                </div>
+              </div>
             </div>
 
             {/* AWAY CLUB (4 cols) */}
@@ -463,7 +468,11 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
                   className="text-xs sm:text-sm font-mono text-emerald-300 font-semibold mt-1 drop-shadow flex items-center sm:justify-end gap-1.5 flex-wrap"
                 >
                   <BallIcon className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
-                  <span>{awayScorersText}</span>
+                  <span>
+                    {awayScorersText} • Shots:{" "}
+                    {match?.statistics.shots.away ?? 0} (
+                    {match?.statistics.shotsOnTarget.away ?? 0} OT)
+                  </span>
                   {awayCardText && (
                     <>
                       <span>•</span>
@@ -510,13 +519,9 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-4 text-[11px] font-mono">
-            <span className="flex items-center gap-1.5 text-slate-500">
-              <span className="w-3 h-2 rounded-sm bg-slate-400 inline-block"></span>{" "}
-              Watched Live
-            </span>
             <span className="flex items-center gap-1.5 text-teal-700 font-bold">
               <span className="w-3 h-2 rounded-sm bg-mint inline-block"></span>{" "}
-              Unpaused Window (
+              {t.scoreContainer.unpausedWindow} (
               <span id="window-range-label">
                 {stoppedMinute}&apos; → {currentMinute}&apos;
               </span>
@@ -529,13 +534,15 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
         <div className="relative h-16 bg-slate-100 rounded-xl border border-slate-300 flex items-center px-4 select-none overflow-hidden shadow-inner">
           {/* Pitch Halfway & 15-min Grid Lines */}
           <div className="absolute inset-x-4 top-1.5 flex justify-between text-[10px] font-mono text-slate-500 pointer-events-none">
-            <span>KO 0&apos;</span>
+            <span>{t.scoreContainer.timelineTicks.kickOff}</span>
             <span>15&apos;</span>
             <span>30&apos;</span>
-            <span className="text-pl-purple font-bold">HT 45&apos;</span>
+            <span className="text-pl-purple font-bold">
+              {t.scoreContainer.timelineTicks.halfTime}
+            </span>
             <span className="text-red-600 font-bold">60&apos;</span>
             <span>75&apos;</span>
-            <span>FT 90&apos;</span>
+            <span>{t.scoreContainer.timelineTicks.fullTime}</span>
           </div>
 
           {/* Base 90-Minute Track */}
@@ -646,7 +653,7 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
                   </span>
                 </>
               ) : (
-                <span>TIMELINE EVENT</span>
+                <span>{t.scoreContainer.timelineEvent}</span>
               )}
             </span>
             <div>
@@ -664,23 +671,24 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
               </p>
             </div>
           </div>
-          <button
-            id="replay-event-fx-btn"
-            type="button"
-            onClick={() => {
-              if (!activeEv || !formattedActiveEv) return;
-              onTriggerAnimation({
-                kind: mapEventTypeToAnimationKind(activeEv.eventType),
-                min: activeEv.minute,
-                club: formattedActiveEv.clubName,
-                player: formattedActiveEv.playerLine,
-                sub: formattedActiveEv.title,
-              });
-            }}
-            className="text-xs font-mono font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg bg-pl-purple/10 hover:bg-pl-purple/20 text-pl-purple border border-pl-purple/30 shrink-0 transition-colors cursor-pointer"
-          >
-            ▶ Replay Event Animation
-          </button>
+          {activeEv && formattedActiveEv && (
+            <button
+              id="replay-event-fx-btn"
+              type="button"
+              onClick={() => {
+                onTriggerAnimation({
+                  kind: mapEventTypeToAnimationKind(activeEv.eventType),
+                  min: activeEv.minute,
+                  club: formattedActiveEv.clubName,
+                  player: formattedActiveEv.playerLine,
+                  sub: formattedActiveEv.title,
+                });
+              }}
+              className="text-xs font-mono font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg bg-pl-purple/10 hover:bg-pl-purple/20 text-pl-purple border border-pl-purple/30 shrink-0 transition-colors cursor-pointer"
+            >
+              {t.scoreContainer.replayAnimation}
+            </button>
+          )}
         </div>
       </div>
     </section>

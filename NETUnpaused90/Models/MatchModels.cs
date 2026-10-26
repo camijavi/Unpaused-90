@@ -108,7 +108,9 @@ public record CatchUpResponse(
     int? WordCount = null,
     int? EstimatedDurationSeconds = null,
     string? Voice = null,
-    string? AudioUrl = null
+    string? AudioUrl = null,
+    int? CurrentMinute = null,
+    int? LastViewedMinute = null
 );
 
 public record PersonalizedSummaryRequest(
@@ -129,7 +131,9 @@ public record PersonalizedSummaryResponse(
     int WordCount = 0,
     int EstimatedDurationSeconds = 0,
     string? Voice = null,
-    string? AudioUrl = null
+    string? AudioUrl = null,
+    int? CurrentMinute = null,
+    int? LastViewedMinute = null
 );
 
 public record ExplainEventRequest(

@@ -1,8 +1,13 @@
 import "./App.css";
 import Dashboard from "./screens/Dashboard";
+import { LanguageProvider } from "./languages/LanguageContext";
 
 function App() {
-  return <Dashboard />;
+  return (
+    <LanguageProvider>
+      <Dashboard />
+    </LanguageProvider>
+  );
 }
 
 export default App;

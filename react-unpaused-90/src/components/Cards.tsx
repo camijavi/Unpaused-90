@@ -12,6 +12,7 @@ import {
   YellowCardIcon,
 } from "./Icons";
 import { mapEventTypeToAnimationKind } from "./ScoreContainer";
+import { useLanguage } from "../languages/LanguageContext";
 
 interface CardsProps {
   match: MatchData | null;
@@ -36,6 +37,7 @@ export const Cards: React.FC<CardsProps> = ({
   statusBadgeText,
   onClose,
 }) => {
+  const { t } = useLanguage();
   const windowStr = `${stoppedMinute}' – ${currentMinute}'`;
   const homeCode = match?.homeTeam.teamId ?? "ARS";
   const awayCode = match?.awayTeam.teamId ?? "LIV";
@@ -67,30 +69,27 @@ export const Cards: React.FC<CardsProps> = ({
     match?.awayTeam.startingXI[0];
 
   return (
-    <section aria-label="Catch Me Up Intelligence Cards" className="space-y-3">
+    <section aria-label={t.cards.deckTitle} className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2.5">
           <h2 className="text-xl sm:text-2xl font-display font-black uppercase tracking-wide text-slate-900 flex items-center gap-2">
             <BallIcon className="w-5 h-5 text-pl-purple shrink-0" />
-            <span>Live Catch-Up Intelligence Deck</span>
+            <span>{t.cards.deckTitle}</span>
           </h2>
           <span
             id="cards-status-badge"
             className="text-xs font-mono font-bold px-2.5 py-0.5 rounded bg-teal-100 text-teal-800 border border-teal-300"
           >
-            {statusBadgeText || `Synced to ${windowStr} Window`}
+            {statusBadgeText || `${t.cards.deckWindow} ${windowStr}`}
           </span>
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="text-xs font-mono text-slate-500 hidden sm:inline">
-            4-Pillar Daylight Editorial Layout • Live Azure OpenAI Telemetry
-          </span>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close Live Catch-Up Intelligence Deck"
-            title="Close Live Catch-Up Deck"
+            aria-label={t.cards.dismiss}
+            title={t.cards.dismiss}
             className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-600 border border-slate-300 hover:border-red-300 flex items-center justify-center font-mono text-sm font-bold transition-colors cursor-pointer"
           >
             ✕
@@ -106,7 +105,7 @@ export const Cards: React.FC<CardsProps> = ({
           <div>
             <div className="flex items-center justify-between gap-2 mb-3">
               <span className="px-2.5 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200 font-mono text-[11px] font-extrabold">
-                01 / CHRONOLOGY
+                {t.cards.card1.tag}
               </span>
               <span
                 className="text-xs font-mono font-bold text-slate-500"
@@ -119,7 +118,7 @@ export const Cards: React.FC<CardsProps> = ({
               className="text-xl font-display font-black uppercase tracking-wide text-slate-900 mb-2"
               id="card1-title"
             >
-              What Happened
+              {t.cards.card1.title}
             </h3>
             <p
               className={`text-xs sm:text-sm text-slate-600 leading-relaxed ${
@@ -127,10 +126,7 @@ export const Cards: React.FC<CardsProps> = ({
               }`}
               id="card1-body"
             >
-              {catchUp?.whatHappened ??
-                (isGenerating
-                  ? `Synthesizing chronology for minutes ${windowStr}...`
-                  : `Between ${windowStr}, ${windowEvents.length} key timeline events unfolded across the pitch.`)}
+              {catchUp?.whatHappened ?? t.cards.card1.fallback}
             </p>
           </div>
 
@@ -169,7 +165,7 @@ export const Cards: React.FC<CardsProps> = ({
               })}
             </div>
             <div className="flex items-center justify-between text-[11px] text-slate-500">
-              <span>Window Activity</span>
+              <span>{t.cards.deckWindow}</span>
               <span
                 className="font-mono text-teal-700 font-bold"
                 id="card1-stat"
@@ -180,13 +176,13 @@ export const Cards: React.FC<CardsProps> = ({
           </div>
         </article>
 
-        {/* Card 2: Why It Matters (With Mini SVG Pitch Zone 14 Overload Map) */}
+        {/* Card 2: Key Tactical Decisions */}
         <article className="editorial-card rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1.5 bg-sky-500"></div>
           <div>
             <div className="flex items-center justify-between gap-2 mb-3">
               <span className="px-2.5 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 font-mono text-[11px] font-extrabold">
-                02 / CAUSE &amp; EFFECT
+                {t.cards.card2.tag}
               </span>
               <span className="text-xs font-mono text-slate-500">
                 Tactical Blueprint
@@ -196,7 +192,7 @@ export const Cards: React.FC<CardsProps> = ({
               className="text-xl font-display font-black uppercase tracking-wide text-slate-900 mb-2"
               id="card2-title"
             >
-              Why It Matters
+              {t.cards.card2.title}
             </h3>
             <p
               className={`text-xs sm:text-sm text-slate-600 leading-relaxed ${
@@ -207,7 +203,7 @@ export const Cards: React.FC<CardsProps> = ({
               {catchUp?.whyItMatters ??
                 (windowInsight
                   ? `${windowInsight.summary} ${windowInsight.reason}`
-                  : "Analyzing tactical shifts and structural overloads...")}
+                  : t.cards.card2.fallback)}
             </p>
           </div>
 
@@ -292,7 +288,7 @@ export const Cards: React.FC<CardsProps> = ({
           <div>
             <div className="flex items-center justify-between gap-2 mb-3">
               <span className="px-2.5 py-0.5 rounded bg-rose-50 text-rose-800 border border-rose-200 font-mono text-[11px] font-extrabold">
-                03 / TEMPO SWING
+                {t.cards.card3.tag}
               </span>
               <span
                 className="text-xs font-mono font-bold text-rose-700"
@@ -305,7 +301,7 @@ export const Cards: React.FC<CardsProps> = ({
               className="text-xl font-display font-black uppercase tracking-wide text-slate-900 mb-2"
               id="card3-title"
             >
-              Momentum Changes
+              {t.cards.card3.title}
             </h3>
             <p
               className={`text-xs sm:text-sm text-slate-600 leading-relaxed ${
@@ -313,8 +309,7 @@ export const Cards: React.FC<CardsProps> = ({
               }`}
               id="card3-body"
             >
-              {catchUp?.momentumChanges ??
-                "Evaluating possession waves, high-press sequences, and field tilt swings..."}
+              {catchUp?.momentumChanges ?? t.cards.card3.fallback}
             </p>
           </div>
 
@@ -322,12 +317,12 @@ export const Cards: React.FC<CardsProps> = ({
           <div className="mt-4 pt-3 border-t border-slate-200">
             <div className="flex justify-between text-[10px] font-mono text-slate-500 mb-1.5">
               <span className="text-red-600 font-bold">
-                PASS ACC: {match?.statistics.passAccuracy.home ?? 87}%{" "}
+                {t.cards.card3.passAcc} {match?.statistics.passAccuracy.home ?? 87}%{" "}
                 {homeCode}
               </span>
               <span className="text-teal-700 font-bold">
-                CORNERS: {match?.statistics.corners.home ?? 7} –{" "}
-                {match?.statistics.corners.away ?? 5}
+                {t.cards.card3.shots} {match?.statistics.shots.home ?? 7} –{" "}
+                {match?.statistics.shots.away ?? 5}
               </span>
             </div>
             <div className="grid grid-cols-6 gap-1.5 h-8 items-end bg-slate-100 p-1.5 rounded-lg border border-slate-200">
@@ -365,23 +360,23 @@ export const Cards: React.FC<CardsProps> = ({
           </div>
         </article>
 
-        {/* Card 4: What To Watch Next (Key Player 1v1 Radar) */}
+        {/* Card 4: Current Game State */}
         <article className="editorial-card rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1.5 bg-amber-500"></div>
           <div>
             <div className="flex items-center justify-between gap-2 mb-3">
               <span className="px-2.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 font-mono text-[11px] font-extrabold">
-                04 / NEXT 15 MINS
+                {t.cards.card4.tag}
               </span>
               <span className="text-xs font-mono text-amber-700 font-bold">
-                Live Scout Radar
+                {t.cards.card4.tacticalContext}
               </span>
             </div>
             <h3
               className="text-xl font-display font-black uppercase tracking-wide text-slate-900 mb-2"
               id="card4-title"
             >
-              What To Watch Next
+              {t.cards.card4.title}
             </h3>
             <p
               className={`text-xs sm:text-sm text-slate-600 leading-relaxed ${
@@ -389,8 +384,7 @@ export const Cards: React.FC<CardsProps> = ({
               }`}
               id="card4-body"
             >
-              {catchUp?.whatToWatchNext ??
-                "Identifying key tactical matchups and decisive zones to watch next..."}
+              {catchUp?.whatToWatchNext ?? t.cards.card4.fallback}
             </p>
           </div>
 
