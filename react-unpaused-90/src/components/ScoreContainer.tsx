@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useLayoutEffect } from "react";
 import stadiumImg from "../assets/stadium.jpe";
 import Goal from "../Animations/Goal";
 import YellowCard from "../Animations/YellowCard";
@@ -122,6 +122,119 @@ export function formatTimelineEventTitle(
       ev.player ?? clubName
     } at minute ${ev.minute}'.`,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Timeline layout (pixel-based, collision-free)
+// ---------------------------------------------------------------------------
+const TL_PIN_H = 24; // pin height (h-6)
+const TL_ROW_H = 30; // vertical pitch between stacked pin rows
+const TL_PIN_GAP = 8; // min horizontal gap between pins in the same row (incl. ring/scale room)
+const TL_MAX_SHIFT = 10; // px a pin may slide right to stay in a lower row
+const TL_LANE_PAD = 10; // breathing room between lane edge and outermost row
+const TL_BAR_H = 12;
+const TL_RULER_H = 18;
+const TL_TICKS = [0, 15, 30, 45, 60, 75, 90];
+
+/** Deterministic pin width: icon + "NN'" label in 10.5px mono. Applied as an explicit style width. */
+function timelinePinWidth(ev: TimelineEvent): number {
+  const chars = String(ev.minute).length + 1;
+  return Math.round(30 + chars * 6.6);
+}
+
+interface PackedPin {
+  ev: TimelineEvent;
+  stemX: number; // true minute position on the track
+  pinX: number; // pin center (may differ slightly from stemX to avoid edges/neighbours)
+  width: number;
+  row: number; // 0 = row nearest to the track bar
+}
+
+/**
+ * Greedy interval packing: each pin goes into the lowest row where it fits without overlapping,
+ * optionally sliding a few px right. New rows are added as needed, so pins can never overlap.
+ */
+function packTimelinePins(
+  events: TimelineEvent[],
+  trackWidth: number,
+): { pins: PackedPin[]; rows: number } {
+  const W = trackWidth > 0 ? trackWidth : 900;
+  const rowEnds: number[] = [];
+  const sorted = [...events].sort((a, b) => a.minute - b.minute);
+
+  const pins = sorted.map((ev) => {
+    const width = timelinePinWidth(ev);
+    const half = width / 2;
+    const stemX = Math.min(1, Math.max(0, ev.minute / 90)) * W;
+    const desired = Math.min(W - half, Math.max(half, stemX));
+
+    let row = -1;
+    let pinX = desired;
+    for (let r = 0; r < rowEnds.length; r++) {
+      const minCenter = rowEnds[r] + TL_PIN_GAP + half;
+      if (minCenter <= desired) {
+        row = r;
+        pinX = desired;
+        break;
+      }
+      const canSlide =
+        minCenter - desired <= TL_MAX_SHIFT &&
+        minCenter + half <= W &&
+        Math.abs(minCenter - stemX) <= half - 6; // stem must still land on the pin
+      if (canSlide) {
+        row = r;
+        pinX = minCenter;
+        break;
+      }
+    }
+    if (row === -1) {
+      row = rowEnds.length;
+      rowEnds.push(-Infinity);
+      pinX = desired;
+    }
+    rowEnds[row] = pinX + half;
+
+    return { ev, stemX, pinX, width, row };
+  });
+
+  return { pins, rows: Math.max(1, rowEnds.length) };
+}
+
+function timelineBadgeStyle(ev: TimelineEvent, inWindow: boolean): string {
+  const kind = mapEventTypeToAnimationKind(ev.eventType);
+  const type = ev.eventType.toLowerCase();
+  const isPenalty = type.includes("penalty");
+  const isShot = type.includes("shot");
+  const isPressure = type.includes("pressure");
+
+  if (inWindow) {
+    if (kind === "goal") return "bg-emerald-600 text-white border border-emerald-700 shadow-md";
+    if (kind === "red") return "bg-red-600 text-white border border-red-700 shadow-md";
+    if (kind === "yellow") return "bg-amber-400 text-slate-950 border border-amber-500 shadow-md";
+    if (isPenalty) return "bg-purple-700 text-white border border-purple-800 shadow-md";
+    if (isShot) return "bg-slate-700 text-white border border-slate-800 shadow-md";
+    if (isPressure) return "bg-indigo-600 text-white border border-indigo-700 shadow-md";
+    return "bg-sky-600 text-white border border-sky-700 shadow-md";
+  }
+  if (kind === "goal") return "bg-emerald-50 text-emerald-800 border border-emerald-400 hover:bg-emerald-600 hover:text-white";
+  if (kind === "red") return "bg-red-50 text-red-800 border border-red-400 hover:bg-red-600 hover:text-white";
+  if (kind === "yellow") return "bg-amber-50 text-amber-900 border border-amber-400 hover:bg-amber-400 hover:text-slate-950";
+  if (isPenalty) return "bg-purple-50 text-purple-900 border border-purple-400 hover:bg-purple-700 hover:text-white";
+  if (isShot) return "bg-white text-slate-600 border border-slate-300 hover:bg-slate-700 hover:text-white";
+  if (isPressure) return "bg-indigo-50 text-indigo-800 border border-indigo-300 hover:bg-indigo-600 hover:text-white";
+  return "bg-sky-50 text-sky-800 border border-sky-300 hover:bg-sky-600 hover:text-white";
+}
+
+function TimelinePinIcon({ ev }: { ev: TimelineEvent }) {
+  const kind = mapEventTypeToAnimationKind(ev.eventType);
+  const type = ev.eventType.toLowerCase();
+  if (type.includes("penalty")) return <BallIcon className="w-3 h-3 text-purple-300 shrink-0" />;
+  if (kind === "goal") return <BallIcon className="w-3 h-3 shrink-0" />;
+  if (kind === "yellow") return <YellowCardIcon className="w-2.5 h-3 shrink-0" />;
+  if (kind === "red") return <RedCardIcon className="w-2.5 h-3 shrink-0" />;
+  if (type.includes("shot")) return <TargetIcon className="w-2.5 h-2.5 shrink-0" />;
+  if (type.includes("pressure")) return <TimerIcon className="w-2.5 h-2.5 shrink-0" />;
+  return <SubIcon className="w-3 h-3 shrink-0" />;
 }
 
 export const ScoreContainer: React.FC<ScoreContainerProps> = ({
@@ -263,61 +376,41 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
     );
   }, [filteredTimeline, homeCode, homeName]);
 
-  // Multi-tier anti-collision algorithm to guarantee pins never overlap
-  const layoutPins = (events: TimelineEvent[]) => {
-    const sorted = [...events].sort((a, b) => a.minute - b.minute);
-    const lastMin = [-999, -999, -999];
-    const COLLISION_MINUTES = 4.2;
-
-    return sorted.map((ev, idx) => {
-      let leftPct = Math.min(96, Math.max(4, (ev.minute / 90) * 100));
-      const inWindow = ev.minute >= stoppedMinute && ev.minute <= currentMinute;
-      const kind = mapEventTypeToAnimationKind(ev.eventType);
-      const isSelected = activeEv?.eventId === ev.eventId;
-
-      const dists = [
-        Math.abs(ev.minute - lastMin[0]),
-        Math.abs(ev.minute - lastMin[1]),
-        Math.abs(ev.minute - lastMin[2]),
-      ];
-
-      let chosenTier = -1;
-      for (let i = 0; i < 3; i++) {
-        if (dists[i] >= COLLISION_MINUTES) {
-          chosenTier = i;
-          break;
-        }
-      }
-
-      if (chosenTier === -1) {
-        chosenTier = dists.indexOf(Math.max(...dists));
-        if (dists[chosenTier] < 2.5) {
-          const nudge = idx % 2 === 0 ? -1.2 : 1.2;
-          leftPct = Math.min(96, Math.max(4, leftPct + nudge));
-        }
-      }
-
-      lastMin[chosenTier] = ev.minute;
-
-      return {
-        ev,
-        leftPct,
-        tier: chosenTier,
-        inWindow,
-        kind,
-        isSelected,
-      };
+  // Measure the real track width so pin collisions are resolved in pixels, not minutes
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const [trackWidth, setTrackWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = trackRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? 0;
+      setTrackWidth((prev) => (Math.abs(prev - width) > 0.5 ? width : prev));
     });
-  };
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
-  const positionedHome = useMemo(
-    () => layoutPins(homeEvents),
-    [homeEvents, stoppedMinute, currentMinute, activeEv],
+  const homeLayout = useMemo(
+    () => packTimelinePins(homeEvents, trackWidth),
+    [homeEvents, trackWidth],
   );
-  const positionedAway = useMemo(
-    () => layoutPins(awayEvents),
-    [awayEvents, stoppedMinute, currentMinute, activeEv],
+  const awayLayout = useMemo(
+    () => packTimelinePins(awayEvents, trackWidth),
+    [awayEvents, trackWidth],
   );
+
+  // Vertical geometry: [home rows] [track bar] [away rows] [minute ruler]
+  const homeRows = homeLayout.rows;
+  const awayRows = awayLayout.rows;
+  const barTop = TL_LANE_PAD + homeRows * TL_ROW_H + 6;
+  const awayLaneTop = barTop + TL_BAR_H + 12;
+  const rulerTop = awayLaneTop + awayRows * TL_ROW_H + 4;
+  const timelineHeight = rulerTop + TL_RULER_H + 6;
+  const homePinTop = (row: number) =>
+    TL_LANE_PAD + (homeRows - 1 - row) * TL_ROW_H;
+  const awayPinTop = (row: number) =>
+    awayLaneTop + row * TL_ROW_H + (TL_ROW_H - TL_PIN_H) / 2;
+  const nowPct = Math.min(100, Math.max(0, (currentMinute / 90) * 100));
 
   const formattedActiveEv = activeEv
     ? formatTimelineEventTitle(activeEv, homeCode, homeName, awayName)
@@ -755,224 +848,176 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
           </div>
         </div>
 
-        {/* Custom Daylight Multi-Tier Broadcast Timeline Track */}
-        <div className="relative h-[192px] bg-slate-50/90 rounded-2xl border border-slate-300 select-none shadow-inner overflow-hidden">
-          {/* Subtle Team Lane Banners */}
-          <div className="absolute left-3 top-2 flex items-center gap-1.5 pointer-events-none select-none z-0 opacity-80">
-            <span className="w-2 h-2 rounded-full bg-red-600"></span>
-            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500">
-              {homeName} ({homeCode}) • {t.scoreContainer.timelineFilters.homeLane}
-            </span>
-          </div>
-          <div className="absolute left-3 bottom-2 flex items-center gap-1.5 pointer-events-none select-none z-0 opacity-80">
-            <span className="w-2 h-2 rounded-full bg-rose-600"></span>
-            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500">
-              {awayName} ({awayCode}) • {t.scoreContainer.timelineFilters.awayLane}
-            </span>
-          </div>
-
-          {/* Minute Tick Labels */}
-          <div className="absolute inset-x-6 top-[74px] flex justify-between text-[10px] font-mono text-slate-500 pointer-events-none z-0">
-            <span>{t.scoreContainer.timelineTicks.kickOff}</span>
-            <span>15&apos;</span>
-            <span>30&apos;</span>
-            <span className="text-pl-purple font-bold">
-              {t.scoreContainer.timelineTicks.halfTime}
-            </span>
-            <span className="text-red-600 font-bold">60&apos;</span>
-            <span>75&apos;</span>
-            <span>{t.scoreContainer.timelineTicks.fullTime}</span>
-          </div>
-
-          {/* Central 90-Minute Track Bar */}
-          <div className="absolute inset-x-6 top-[92px] h-3 bg-slate-200 rounded-full border border-slate-300 overflow-hidden shadow-inner">
-            {/* Watched segment */}
-            <div
-              id="timeline-watched-bar"
-              className="absolute top-0 left-0 h-full bg-slate-400 transition-all duration-300"
-              style={{ width: `${watchedPct}%` }}
-            ></div>
-            {/* Missed / Unpaused Window Highlight */}
-            <div
-              id="timeline-missed-bar"
-              className="absolute top-0 h-full bg-gradient-to-r from-teal-500 via-mint to-sky-500 transition-all duration-300 shadow-[0_0_12px_rgba(20,184,166,0.6)]"
-              style={{ left: `${watchedPct}%`, width: `${missedPct}%` }}
-            ></div>
-          </div>
-
-          {/* Live Match Clock Needle Cursor on the Track */}
+        {/* Collision-free Broadcast Timeline Track: [home rows | bar | away rows | ruler] */}
+        <div
+          className="relative flex bg-slate-50/90 rounded-2xl border border-slate-300 select-none shadow-inner overflow-hidden transition-[height] duration-300"
+          style={{ height: `${timelineHeight}px` }}
+        >
+          {/* Lane background bands */}
           <div
-            className="absolute top-[88px] -translate-x-1/2 pointer-events-none z-10 flex flex-col items-center"
-            style={{ left: `calc(1.5rem + (100% - 3rem) * ${Math.min(100, (currentMinute / 90) * 100) / 100})` }}
-          >
-            <span className="w-5 h-5 rounded-full bg-red-600/20 animate-ping absolute -top-0.5"></span>
-            <span className="w-5 h-5 rounded-full bg-red-600 border-2 border-white shadow-md flex items-center justify-center text-[9px] font-mono font-black text-white">
-              {currentMinute}&apos;
-            </span>
-          </div>
+            className="absolute inset-x-0 top-0 bg-white/60 pointer-events-none"
+            style={{ height: `${barTop - 3}px` }}
+          />
 
-          {/* Stem Lines & Pins Container */}
-          <div className="absolute inset-x-6 inset-y-0 pointer-events-none">
-            {/* HOME TEAM EVENTS (TOP LANE: Tiers 2, 1, 0) */}
-            {positionedHome.map((pos) => {
-              const { ev, leftPct, tier, inWindow, kind, isSelected } = pos;
-              const info = formatTimelineEventTitle(ev, homeCode, homeName, awayName);
-              const homeTiersTop = [50, 26, 2];
-              const topPx = homeTiersTop[tier];
-              const stemTop = topPx + 24;
-              const stemHeight = Math.max(0, 92 - stemTop);
+          {/* Measured track area (pins, bar, ruler) */}
+          <div ref={trackRef} className="relative flex-1 mx-4 sm:mx-6">
+            {/* 15-minute gridlines (HT emphasised) */}
+            {TL_TICKS.map((m) => (
+              <div
+                key={`grid-${m}`}
+                aria-hidden="true"
+                className={`absolute top-0 w-px -translate-x-1/2 pointer-events-none ${
+                  m === 45
+                    ? "bg-pl-purple/25"
+                    : m === 0 || m === 90
+                      ? "bg-transparent"
+                      : "bg-slate-300/50"
+                }`}
+                style={{ left: `${(m / 90) * 100}%`, height: `${rulerTop}px` }}
+              />
+            ))}
 
-              const isGoal = kind === "goal";
-              const isRed = kind === "red";
-              const isYellow = kind === "yellow";
-              const isPenalty = ev.eventType.toLowerCase().includes("penalty");
-              const isShot = ev.eventType.toLowerCase().includes("shot");
-              const isPressure = ev.eventType.toLowerCase().includes("pressure");
+            {/* Live "now" line across both lanes */}
+            <div
+              aria-hidden="true"
+              className="absolute top-0 w-px -translate-x-1/2 bg-red-500/40 pointer-events-none"
+              style={{ left: `${nowPct}%`, height: `${rulerTop}px` }}
+            />
 
-              let badgeStyle = "bg-white text-slate-700 border border-slate-300 hover:border-slate-500";
-              if (inWindow) {
-                if (isGoal) badgeStyle = "bg-emerald-600 text-white ring-2 ring-emerald-300 shadow-md";
-                else if (isRed) badgeStyle = "bg-red-600 text-white ring-2 ring-red-300 shadow-md";
-                else if (isYellow) badgeStyle = "bg-amber-400 text-slate-950 ring-2 ring-amber-200 shadow-md";
-                else if (isPenalty) badgeStyle = "bg-purple-700 text-white ring-2 ring-purple-300 shadow-md";
-                else if (isShot) badgeStyle = "bg-slate-700 text-white ring-2 ring-slate-300 shadow-md";
-                else if (isPressure) badgeStyle = "bg-indigo-600 text-white ring-2 ring-indigo-300 shadow-md";
-                else badgeStyle = "bg-sky-600 text-white ring-2 ring-sky-300 shadow-md";
-              } else {
-                if (isGoal) badgeStyle = "bg-emerald-50 text-emerald-800 border border-emerald-400 hover:bg-emerald-600 hover:text-white";
-                else if (isRed) badgeStyle = "bg-red-50 text-red-800 border border-red-400 hover:bg-red-600 hover:text-white";
-                else if (isYellow) badgeStyle = "bg-amber-50 text-amber-900 border border-amber-400 hover:bg-amber-400 hover:text-slate-950";
-                else if (isPenalty) badgeStyle = "bg-purple-50 text-purple-900 border border-purple-400 hover:bg-purple-700 hover:text-white";
-                else if (isShot) badgeStyle = "bg-white text-slate-600 border border-slate-300 hover:bg-slate-700 hover:text-white";
-                else if (isPressure) badgeStyle = "bg-indigo-50 text-indigo-800 border border-indigo-300 hover:bg-indigo-600 hover:text-white";
-                else badgeStyle = "bg-sky-50 text-sky-800 border border-sky-300 hover:bg-sky-600 hover:text-white";
-              }
+            {/* Central 90-Minute Track Bar */}
+            <div
+              className="absolute inset-x-0 bg-slate-200 rounded-full border border-slate-300 overflow-hidden shadow-inner"
+              style={{ top: `${barTop}px`, height: `${TL_BAR_H}px` }}
+            >
+              {/* Watched segment */}
+              <div
+                id="timeline-watched-bar"
+                className="absolute top-0 left-0 h-full bg-slate-400 transition-all duration-300"
+                style={{ width: `${watchedPct}%` }}
+              ></div>
+              {/* Missed / Unpaused Window Highlight */}
+              <div
+                id="timeline-missed-bar"
+                className="absolute top-0 h-full bg-gradient-to-r from-teal-500 via-mint to-sky-500 transition-all duration-300 shadow-[0_0_12px_rgba(20,184,166,0.6)]"
+                style={{ left: `${watchedPct}%`, width: `${missedPct}%` }}
+              ></div>
+            </div>
 
+            {/* Stems (drawn beneath pins so they never cover labels) */}
+            {homeLayout.pins.map(({ ev, stemX, row }) => {
+              const top = homePinTop(row) + TL_PIN_H;
+              const inWindow = ev.minute >= stoppedMinute && ev.minute <= currentMinute;
+              const isSelected = activeEv?.eventId === ev.eventId;
               return (
-                <React.Fragment key={ev.eventId}>
-                  {/* Stem line connecting pin to track */}
-                  <div
-                    style={{ left: `${leftPct}%`, top: `${stemTop}px`, height: `${stemHeight}px` }}
-                    className={`absolute w-[1.5px] -translate-x-1/2 pointer-events-none transition-colors ${
-                      isSelected ? "bg-pl-purple z-20" : inWindow ? "bg-teal-400 z-10" : "bg-slate-300/80"
-                    }`}
-                  />
-                  {/* Event Pin Button */}
-                  <button
-                    type="button"
-                    style={{ left: `${leftPct}%`, top: `${topPx}px` }}
-                    onClick={() => {
-                      onSelectTimelineEvent(ev);
-                      onTriggerAnimation({
-                        kind,
-                        min: ev.minute,
-                        club: info.clubName,
-                        player: info.playerLine,
-                        sub: info.title,
-                      });
-                    }}
-                    className={`timeline-pin pointer-events-auto -translate-x-1/2 absolute h-6 px-1.5 py-0.5 rounded-md text-[10.5px] font-mono font-bold transition-all duration-150 flex items-center gap-1 cursor-pointer z-10 hover:z-30 hover:scale-115 shadow-sm ${badgeStyle} ${
-                      isSelected ? "ring-2 ring-pl-purple scale-110 z-30 shadow-lg" : ""
-                    }`}
-                    title={`${ev.minute}' ${info.title}`}
-                  >
-                    {isGoal && <BallIcon className="w-3 h-3 shrink-0" />}
-                    {isYellow && <YellowCardIcon className="w-2.5 h-3 shrink-0" />}
-                    {isRed && <RedCardIcon className="w-2.5 h-3 shrink-0" />}
-                    {isPenalty && <BallIcon className="w-3 h-3 text-purple-300 shrink-0" />}
-                    {isShot && <TargetIcon className="w-2.5 h-2.5 shrink-0" />}
-                    {isPressure && <TimerIcon className="w-2.5 h-2.5 shrink-0" />}
-                    {!isGoal && !isYellow && !isRed && !isPenalty && !isShot && !isPressure && (
-                      <SubIcon className="w-3 h-3 shrink-0" />
-                    )}
-                    <span>{ev.minute}&apos;</span>
-                  </button>
-                </React.Fragment>
+                <div
+                  key={`stem-${ev.eventId}`}
+                  aria-hidden="true"
+                  className={`absolute w-[1.5px] -translate-x-1/2 pointer-events-none ${
+                    isSelected ? "bg-pl-purple z-[5]" : inWindow ? "bg-teal-400" : "bg-slate-300"
+                  }`}
+                  style={{ left: `${stemX}px`, top: `${top}px`, height: `${Math.max(0, barTop - top)}px` }}
+                />
+              );
+            })}
+            {awayLayout.pins.map(({ ev, stemX, row }) => {
+              const top = barTop + TL_BAR_H;
+              const inWindow = ev.minute >= stoppedMinute && ev.minute <= currentMinute;
+              const isSelected = activeEv?.eventId === ev.eventId;
+              return (
+                <div
+                  key={`stem-${ev.eventId}`}
+                  aria-hidden="true"
+                  className={`absolute w-[1.5px] -translate-x-1/2 pointer-events-none ${
+                    isSelected ? "bg-pl-purple z-[5]" : inWindow ? "bg-teal-400" : "bg-slate-300"
+                  }`}
+                  style={{ left: `${stemX}px`, top: `${top}px`, height: `${Math.max(0, awayPinTop(row) - top)}px` }}
+                />
               );
             })}
 
-            {/* AWAY TEAM EVENTS (BOTTOM LANE: Tiers 0, 1, 2) */}
-            {positionedAway.map((pos) => {
-              const { ev, leftPct, tier, inWindow, kind, isSelected } = pos;
+            {/* Live Match Clock Needle on the Track */}
+            <div
+              className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none z-20"
+              style={{ left: `${nowPct}%`, top: `${barTop + TL_BAR_H / 2}px` }}
+            >
+              <span className="absolute inset-0 rounded-full bg-red-600/25 animate-ping"></span>
+              <span className="relative block h-5 min-w-5 px-1.5 rounded-full bg-red-600 border-2 border-white shadow-md text-[9px] leading-4 text-center font-mono font-black text-white">
+                {currentMinute}&apos;
+              </span>
+            </div>
+
+            {/* Event Pins */}
+            {[
+              ...homeLayout.pins.map((p) => ({ ...p, top: homePinTop(p.row) })),
+              ...awayLayout.pins.map((p) => ({ ...p, top: awayPinTop(p.row) })),
+            ].map(({ ev, pinX, width, top }) => {
               const info = formatTimelineEventTitle(ev, homeCode, homeName, awayName);
-              const awayTiersTop = [110, 136, 162];
-              const topPx = awayTiersTop[tier];
-              const stemTop = 104;
-              const stemHeight = Math.max(0, topPx - stemTop);
-
-              const isGoal = kind === "goal";
-              const isRed = kind === "red";
-              const isYellow = kind === "yellow";
-              const isPenalty = ev.eventType.toLowerCase().includes("penalty");
-              const isShot = ev.eventType.toLowerCase().includes("shot");
-              const isPressure = ev.eventType.toLowerCase().includes("pressure");
-
-              let badgeStyle = "bg-white text-slate-700 border border-slate-300 hover:border-slate-500";
-              if (inWindow) {
-                if (isGoal) badgeStyle = "bg-emerald-600 text-white ring-2 ring-emerald-300 shadow-md";
-                else if (isRed) badgeStyle = "bg-red-600 text-white ring-2 ring-red-300 shadow-md";
-                else if (isYellow) badgeStyle = "bg-amber-400 text-slate-950 ring-2 ring-amber-200 shadow-md";
-                else if (isPenalty) badgeStyle = "bg-purple-700 text-white ring-2 ring-purple-300 shadow-md";
-                else if (isShot) badgeStyle = "bg-slate-700 text-white ring-2 ring-slate-300 shadow-md";
-                else if (isPressure) badgeStyle = "bg-indigo-600 text-white ring-2 ring-indigo-300 shadow-md";
-                else badgeStyle = "bg-sky-600 text-white ring-2 ring-sky-300 shadow-md";
-              } else {
-                if (isGoal) badgeStyle = "bg-emerald-50 text-emerald-800 border border-emerald-400 hover:bg-emerald-600 hover:text-white";
-                else if (isRed) badgeStyle = "bg-red-50 text-red-800 border border-red-400 hover:bg-red-600 hover:text-white";
-                else if (isYellow) badgeStyle = "bg-amber-50 text-amber-900 border border-amber-400 hover:bg-amber-400 hover:text-slate-950";
-                else if (isPenalty) badgeStyle = "bg-purple-50 text-purple-900 border border-purple-400 hover:bg-purple-700 hover:text-white";
-                else if (isShot) badgeStyle = "bg-white text-slate-600 border border-slate-300 hover:bg-slate-700 hover:text-white";
-                else if (isPressure) badgeStyle = "bg-indigo-50 text-indigo-800 border border-indigo-300 hover:bg-indigo-600 hover:text-white";
-                else badgeStyle = "bg-sky-50 text-sky-800 border border-sky-300 hover:bg-sky-600 hover:text-white";
-              }
-
+              const kind = mapEventTypeToAnimationKind(ev.eventType);
+              const inWindow = ev.minute >= stoppedMinute && ev.minute <= currentMinute;
+              const isSelected = activeEv?.eventId === ev.eventId;
               return (
-                <React.Fragment key={ev.eventId}>
-                  {/* Stem line connecting pin to track */}
-                  <div
-                    style={{ left: `${leftPct}%`, top: `${stemTop}px`, height: `${stemHeight}px` }}
-                    className={`absolute w-[1.5px] -translate-x-1/2 pointer-events-none transition-colors ${
-                      isSelected ? "bg-pl-purple z-20" : inWindow ? "bg-teal-400 z-10" : "bg-slate-300/80"
-                    }`}
-                  />
-                  {/* Event Pin Button */}
-                  <button
-                    type="button"
-                    style={{ left: `${leftPct}%`, top: `${topPx}px` }}
-                    onClick={() => {
-                      onSelectTimelineEvent(ev);
-                      onTriggerAnimation({
-                        kind,
-                        min: ev.minute,
-                        club: info.clubName,
-                        player: info.playerLine,
-                        sub: info.title,
-                      });
-                    }}
-                    className={`timeline-pin pointer-events-auto -translate-x-1/2 absolute h-6 px-1.5 py-0.5 rounded-md text-[10.5px] font-mono font-bold transition-all duration-150 flex items-center gap-1 cursor-pointer z-10 hover:z-30 hover:scale-115 shadow-sm ${badgeStyle} ${
-                      isSelected ? "ring-2 ring-pl-purple scale-110 z-30 shadow-lg" : ""
-                    }`}
-                    title={`${ev.minute}' ${info.title}`}
-                  >
-                    {isGoal && <BallIcon className="w-3 h-3 shrink-0" />}
-                    {isYellow && <YellowCardIcon className="w-2.5 h-3 shrink-0" />}
-                    {isRed && <RedCardIcon className="w-2.5 h-3 shrink-0" />}
-                    {isPenalty && <BallIcon className="w-3 h-3 text-purple-300 shrink-0" />}
-                    {isShot && <TargetIcon className="w-2.5 h-2.5 shrink-0" />}
-                    {isPressure && <TimerIcon className="w-2.5 h-2.5 shrink-0" />}
-                    {!isGoal && !isYellow && !isRed && !isPenalty && !isShot && !isPressure && (
-                      <SubIcon className="w-3 h-3 shrink-0" />
-                    )}
-                    <span>{ev.minute}&apos;</span>
-                  </button>
-                </React.Fragment>
+                <button
+                  key={ev.eventId}
+                  type="button"
+                  style={{ left: `${pinX - width / 2}px`, top: `${top}px`, width: `${width}px` }}
+                  onClick={() => {
+                    onSelectTimelineEvent(ev);
+                    onTriggerAnimation({
+                      kind,
+                      min: ev.minute,
+                      club: info.clubName,
+                      player: info.playerLine,
+                      sub: info.title,
+                    });
+                  }}
+                  aria-label={`${ev.minute}' ${info.title}`}
+                  aria-pressed={isSelected}
+                  title={`${ev.minute}' ${info.title}`}
+                  className={`timeline-pin absolute h-6 rounded-md text-[10.5px] font-mono font-bold flex items-center justify-center gap-1 cursor-pointer transition-[transform,box-shadow,background-color,color] duration-150 hover:z-30 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pl-purple focus-visible:z-30 ${timelineBadgeStyle(
+                    ev,
+                    inWindow,
+                  )} ${isSelected ? "ring-2 ring-pl-purple ring-offset-1 z-20 shadow-lg" : "z-10 shadow-sm"}`}
+                >
+                  <TimelinePinIcon ev={ev} />
+                  <span>{ev.minute}&apos;</span>
+                </button>
               );
             })}
+
+            {/* Minute Ruler (own row — nothing can overlay it) */}
+            <div
+              className="absolute inset-x-0 pointer-events-none border-t border-slate-200"
+              style={{ top: `${rulerTop}px`, height: `${TL_RULER_H}px` }}
+            >
+              {TL_TICKS.map((m) => {
+                const label =
+                  m === 0
+                    ? t.scoreContainer.timelineTicks.kickOff
+                    : m === 45
+                      ? t.scoreContainer.timelineTicks.halfTime
+                      : m === 90
+                        ? t.scoreContainer.timelineTicks.fullTime
+                        : `${m}'`;
+                const align =
+                  m === 0 ? "translate-x-0" : m === 90 ? "-translate-x-full" : "-translate-x-1/2";
+                return (
+                  <span
+                    key={`tick-${m}`}
+                    className={`absolute top-1 whitespace-nowrap text-[10px] font-mono leading-none ${align} ${
+                      m === 45 ? "text-pl-purple font-bold" : "text-slate-500"
+                    }`}
+                    style={{ left: `${(m / 90) * 100}%` }}
+                  >
+                    {label}
+                  </span>
+                );
+              })}
+            </div>
           </div>
 
           {/* Empty State when filters yield 0 events */}
           {filteredTimeline.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center bg-slate-50/90 text-xs font-mono text-slate-500 z-20">
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-50/90 text-xs font-mono text-slate-500 z-40">
               No events found for this filter combination.
             </div>
           )}
