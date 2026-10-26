@@ -65,28 +65,55 @@ export const AudioPlayerDock: React.FC<AudioPlayerDockProps> = ({
             </span>
           </button>
 
-          {/* Co-Host Avatar Pill */}
-          <div className="hidden md:flex items-center -space-x-2 shrink-0">
-            <div
-              className={`w-8 h-8 rounded-full bg-gradient-to-br from-teal-400 to-emerald-600 border-2 flex items-center justify-center text-[11px] font-mono font-extrabold text-white shadow ${
-                speaker === "Ollie"
-                  ? "border-pl-purple ring-2 ring-mint"
-                  : "border-white opacity-70"
-              }`}
-              title={t.audioDock.ollie}
-            >
-              OL
-            </div>
-            <div
-              className={`w-8 h-8 rounded-full bg-gradient-to-br from-rose-500 to-pl-purple border-2 flex items-center justify-center text-[11px] font-mono font-extrabold text-white shadow ${
-                speaker === "Ada"
-                  ? "border-pl-purple ring-2 ring-mint"
-                  : "border-white opacity-70"
-              }`}
-              title={t.audioDock.ada}
-            >
-              AD
-            </div>
+          {/* Co-Host Avatar Pill — active co-host is raised, ringed and pulses while speaking */}
+          <div
+            className="hidden md:flex items-center -space-x-2 shrink-0"
+            role="group"
+            aria-label={`${speakerLabel}${isPlaying ? ` • ${t.audioDock.playing}` : ""}`}
+          >
+            {(
+              [
+                {
+                  id: "Ollie" as const,
+                  initials: "OL",
+                  title: t.audioDock.ollie,
+                  gradient: "from-teal-400 to-emerald-600",
+                },
+                {
+                  id: "Ada" as const,
+                  initials: "AD",
+                  title: t.audioDock.ada,
+                  gradient: "from-rose-500 to-pl-purple",
+                },
+              ]
+            ).map((host) => {
+              const isActive = speaker === host.id;
+              const isSpeaking = isActive && isPlaying;
+              return (
+                <div
+                  key={host.id}
+                  data-active={isActive}
+                  data-speaking={isSpeaking}
+                  aria-current={isActive ? "true" : undefined}
+                  title={host.title}
+                  className={`relative w-8 h-8 rounded-full bg-gradient-to-br ${
+                    host.gradient
+                  } border-2 flex items-center justify-center text-[11px] font-mono font-extrabold text-white shadow transition-all duration-300 ${
+                    isActive
+                      ? "z-10 scale-110 border-pl-purple ring-2 ring-mint opacity-100"
+                      : "z-0 scale-90 border-white opacity-50 grayscale"
+                  }`}
+                >
+                  {isSpeaking && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-0 rounded-full ring-2 ring-mint animate-ping"
+                    />
+                  )}
+                  {host.initials}
+                </div>
+              );
+            })}
           </div>
 
           <div className="min-w-0 flex-1">

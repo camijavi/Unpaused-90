@@ -28,6 +28,15 @@
     "possession": "POSSESSION:",
     "timelineInstruction": "Click any event marker (Goal, Red Card, Yellow Card, Substitution) to trigger its broadcast animation & tactical breakdown",
     "timelineEvent": "TIMELINE EVENT",
+    "eventTypes": {
+      "goal": "GOAL",
+      "yellowCard": "YELLOW CARD",
+      "redCard": "RED CARD",
+      "substitution": "SUBSTITUTION",
+      "pressureSequence": "PRESSURE SEQUENCE",
+      "shot": "SHOT",
+      "penalty": "PENALTY"
+    },
     "replayAnimation": "▶ Replay Event Animation",
     "halves": {
       "firstHalf": "1st Half",
@@ -39,6 +48,20 @@
       "kickOff": "KO 0'",
       "halfTime": "HT 45'",
       "fullTime": "FT 90'"
+    },
+    "timelineFilters": {
+      "all": "All Events",
+      "keyMoments": "Key Events",
+      "goals": "Goals Only",
+      "inWindow": "In Window Only",
+      "homeOnly": "Arsenal",
+      "awayOnly": "Liverpool",
+      "bothTeams": "Both Teams",
+      "showing": "Showing",
+      "of": "of",
+      "events": "events",
+      "homeLane": "Arsenal (Home)",
+      "awayLane": "Liverpool (Away)"
     }
   },
   "heroConsole": {

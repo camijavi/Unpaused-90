@@ -158,7 +158,7 @@ public record AudioRequest(
 );
 
 public record AudioResponse(
-    string AudioUrl,
+    string? AudioUrl,
     string Voice,
     string Language
 );
