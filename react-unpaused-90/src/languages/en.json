@@ -204,6 +204,33 @@
       "generatingBtn": "Synthesizing Full-Time Report...",
       "dismiss": "Dismiss (X)"
     },
+    "finalScoreContainer": {
+      "badge": "MATCH FINAL • 90' FULL TIME REACHED",
+      "finalScoreLabel": "FINAL SCORE:",
+      "statsSubtitle": "All 90 minutes & scheduled events processed • {events} key events • Possession {home}%–{away}%",
+      "generateBtn": "Generate Full-Time Personalized Match Report",
+      "generatingBtn": "Synthesizing Full-Time Report...",
+      "regenerateBtn": "Regenerate Full-Time Match Report",
+      "reportTitle": "90-Minute Personalized Match Report",
+      "words": "words",
+      "audioEstimate": "s audio",
+      "viewStory": "View Match Story",
+      "viewInsights": "View Key Moments",
+      "playAudio": "Listen to Recap",
+      "playingAudio": "Playing Recap...",
+      "lengthOptions": {
+        "1m": "1m Flash",
+        "5m": "5m Deep",
+        "full": "Full Match (500w+)"
+      },
+      "insightTypes": {
+        "GoalImpact": "Goal Impact",
+        "MomentumShift": "Momentum Shift",
+        "TacticalAdvantage": "Tactical Advantage",
+        "DisciplinaryImpact": "Disciplinary Impact",
+        "WinningMoment": "Winning Moment"
+      }
+    },
     "fullTimeDeck": {
       "badge": "FULL-TIME OFFICIAL MATCH REPORT",
       "title": "Complete 90-Minute Tactical & Narrative Summary",

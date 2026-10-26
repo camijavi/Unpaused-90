@@ -204,6 +204,33 @@
       "generatingBtn": "Sintetizando Crónica de Tiempo Completo...",
       "dismiss": "Cerrar (X)"
     },
+    "finalScoreContainer": {
+      "badge": "FINAL DEL PARTIDO • 90' TIEMPO COMPLETO ALCANZADO",
+      "finalScoreLabel": "MARCADOR FINAL:",
+      "statsSubtitle": "Los 90 minutos y eventos reglamentarios procesados • {events} eventos clave • Posesión {home}%–{away}%",
+      "generateBtn": "Generar Crónica Personalizada de Tiempo Completo",
+      "generatingBtn": "Sintetizando Crónica de Tiempo Completo...",
+      "regenerateBtn": "Regenerar Crónica de Tiempo Completo",
+      "reportTitle": "Crónica Personalizada de los 90 Minutos",
+      "words": "palabras",
+      "audioEstimate": "s de audio",
+      "viewStory": "Ver Crónica",
+      "viewInsights": "Ver Momentos Clave",
+      "playAudio": "Escuchar Crónica",
+      "playingAudio": "Reproduciendo Crónica...",
+      "lengthOptions": {
+        "1m": "1m Rápido",
+        "5m": "5m Profundo",
+        "full": "Partido Completo (500+ pal.)"
+      },
+      "insightTypes": {
+        "GoalImpact": "Impacto de Gol",
+        "MomentumShift": "Cambio de Impulso",
+        "TacticalAdvantage": "Ventaja Táctica",
+        "DisciplinaryImpact": "Impacto Disciplinario",
+        "WinningMoment": "Momento Decisivo"
+      }
+    },
     "fullTimeDeck": {
       "badge": "INFORME OFICIAL DE TIEMPO COMPLETO",
       "title": "Resumen Táctico y Narrativo Completo de los 90 Minutos",

@@ -30,8 +30,8 @@ public static class AudioEndpoints
             try
             {
                 // Neural TTS for a full multi-paragraph recap (especially Spanish, which is ~25% longer) routinely
-                // takes several seconds. A short timeout silently forced the robotic browser voice fallback.
-                using var timeoutCts = new CancellationTokenSource(GetSynthesisTimeout(configuration));
+                // takes several seconds. Scale timeout dynamically with script length so longer narratives never abort prematurely.
+                using var timeoutCts = new CancellationTokenSource(GetSynthesisTimeout(configuration, request.Text.Length));
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
                 var response = await speechService.GenerateAudioUrlAsync(request, linkedCts.Token);
                 return Results.Ok(response);
@@ -68,7 +68,7 @@ public static class AudioEndpoints
 
             try
             {
-                using var timeoutCts = new CancellationTokenSource(GetSynthesisTimeout(configuration));
+                using var timeoutCts = new CancellationTokenSource(GetSynthesisTimeout(configuration, request.Text.Length));
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
                 var (audioBytes, _, _) = await speechService.SynthesizeSpeechBytesAsync(request, linkedCts.Token);
                 return Results.File(audioBytes, "audio/mpeg", "unpaused90-recap.mp3");
@@ -81,9 +81,22 @@ public static class AudioEndpoints
         .WithName("GenerateAudioStream");
     }
 
-    private static TimeSpan GetSynthesisTimeout(IConfiguration configuration)
+    private static TimeSpan GetSynthesisTimeout(IConfiguration configuration, int textLength = 0)
     {
-        var seconds = configuration.GetValue<double?>("AzureSpeech:TimeoutSeconds") ?? 30;
-        return TimeSpan.FromSeconds(Math.Clamp(seconds, 5, 120));
+        var configuredSeconds = configuration.GetValue<double?>("AzureSpeech:TimeoutSeconds");
+        if (configuredSeconds.HasValue)
+        {
+            return TimeSpan.FromSeconds(Math.Clamp(configuredSeconds.Value, 5, 120));
+        }
+
+        // Dynamically scale timeout based on narrative length so 5m and full summaries synthesize smoothly
+        var defaultSeconds = textLength switch
+        {
+            > 2000 => 90.0,
+            > 800 => 60.0,
+            _ => 35.0
+        };
+
+        return TimeSpan.FromSeconds(defaultSeconds);
     }
 }

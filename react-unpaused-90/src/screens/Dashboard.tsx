@@ -7,8 +7,8 @@ import ScoreContainer, {
 } from "../components/ScoreContainer";
 import HeroConsole from "../components/HeroConsole";
 import Cards from "../components/Cards";
+import { FinalScoreContainer } from "../components/FinalScoreContainer";
 import AudioPlayerDock from "../components/AudioPlayerDock";
-import { BallIcon, HeadphonesIcon } from "../components/Icons";
 import { useLanguage } from "../languages/LanguageContext";
 import {
   explainTimelineEvent,
@@ -141,7 +141,7 @@ function mapBiasToFavoriteTeam(bias: "neutral" | "arsenal" | "liverpool"): strin
 }
 
 export const Dashboard: React.FC = () => {
-  const { language: globalLanguage, setLanguage: setGlobalLanguage, t } = useLanguage();
+  const { language: globalLanguage, setLanguage: setGlobalLanguage } = useLanguage();
   const [match, setMatch] = useState<MatchData | null>(FALLBACK_MATCH);
   const [timeline, setTimeline] = useState<TimelineEvent[]>(FALLBACK_MATCH.timeline);
   const [insights, setInsights] = useState<GeneratedInsight[]>(
@@ -638,7 +638,12 @@ export const Dashboard: React.FC = () => {
 
   // Step 6: Generate Full-Time Match Summary (`POST /api/v1/personalized-summary`)
   const handleGenerateFullTimeSummary = useCallback(
-    async (autoPlayAudio: boolean, unlockedByGesture = false) => {
+    async (
+      autoPlayAudio: boolean,
+      unlockedByGesture = false,
+      summaryLength?: "1m" | "5m" | "full",
+      langOverride?: "en" | "es"
+    ) => {
       const myGenId = ++generationIdRef.current;
 
       if (unlockedByGesture && autoPlayAudio) {
@@ -655,7 +660,9 @@ export const Dashboard: React.FC = () => {
       }
 
       const activeMatchId = match?.matchId ?? "PL2027-001";
-      const summaryCacheKey = `${activeMatchId}:${mode}:${bias}:${length}:${lang}`;
+      const targetLength = summaryLength ?? "full";
+      const effectiveLang = langOverride ?? lang;
+      const summaryCacheKey = `${activeMatchId}:${mode}:${bias}:${targetLength}:${effectiveLang}`;
       const cachedSummary = summaryCacheRef.current.get(summaryCacheKey);
 
       try {
@@ -665,14 +672,17 @@ export const Dashboard: React.FC = () => {
             matchId: activeMatchId,
             mode,
             favoriteTeam: mapBiasToFavoriteTeam(bias),
-            language: lang,
-            length,
+            language: effectiveLang,
+            length: targetLength,
             includeAudio: false,
           }));
 
         if (myGenId !== generationIdRef.current) return;
         summaryCacheRef.current.set(summaryCacheKey, res);
         setFullTimeSummary(res);
+        if (res.estimatedDurationSeconds && res.estimatedDurationSeconds > 0) {
+          setDuration(res.estimatedDurationSeconds);
+        }
         setIsGeneratingSummary(false);
 
         const assignedSpeaker = speakerFromVoice(res.voice);
@@ -688,20 +698,20 @@ export const Dashboard: React.FC = () => {
             const audioRes = await synthesizeAudio({
               text: res.story,
               voice: res.voice ?? null,
-              language: lang,
+              language: effectiveLang,
             });
             if (myGenId !== generationIdRef.current) return;
             setIsSynthesizing(false);
             if (audioRes.audioUrl) {
               playFreshAudioDataUrl(audioRes.audioUrl);
             } else {
-              playBrowserSpeech(res.story, lang, audioRes.voice);
+              playBrowserSpeech(res.story, effectiveLang, audioRes.voice);
             }
           } catch (audioErr) {
             console.warn("Full-time summary audio fallback to native speech:", audioErr);
             if (myGenId === generationIdRef.current) {
               setIsSynthesizing(false);
-              playBrowserSpeech(res.story, lang, res.voice);
+              playBrowserSpeech(res.story, effectiveLang, res.voice);
             }
           }
         }
@@ -715,7 +725,6 @@ export const Dashboard: React.FC = () => {
     [
       bias,
       lang,
-      length,
       match?.matchId,
       mode,
       playBrowserSpeech,
@@ -724,6 +733,49 @@ export const Dashboard: React.FC = () => {
       unlockAudioElementOnGesture,
     ]
   );
+
+  const handlePlaySummaryAudio = useCallback(
+    async (text: string, voice?: string) => {
+      setShowAudioDock(true);
+      setIsSynthesizing(true);
+      stopAndRevokeCurrentAudio();
+      try {
+        const audioRes = await synthesizeAudio({
+          text,
+          voice: voice ?? null,
+          language: lang,
+        });
+        setIsSynthesizing(false);
+        if (audioRes.audioUrl) {
+          playFreshAudioDataUrl(audioRes.audioUrl);
+        } else {
+          playBrowserSpeech(text, lang, audioRes.voice);
+        }
+      } catch (audioErr) {
+        console.warn("Summary audio synthesis fallback to native speech:", audioErr);
+        setIsSynthesizing(false);
+        playBrowserSpeech(text, lang, voice);
+      }
+    },
+    [lang, playBrowserSpeech, playFreshAudioDataUrl, stopAndRevokeCurrentAudio]
+  );
+
+  // Sync fullTimeSummary when globalLanguage changes if already generated
+  const fullTimeSummaryRef = useRef<PersonalizedSummaryResponse | null>(null);
+  useEffect(() => {
+    fullTimeSummaryRef.current = fullTimeSummary;
+  }, [fullTimeSummary]);
+
+  useEffect(() => {
+    if (fullTimeSummaryRef.current) {
+      handleGenerateFullTimeSummary(
+        false,
+        false,
+        (fullTimeSummaryRef.current.length as "1m" | "5m" | "full") || "full",
+        globalLanguage
+      );
+    }
+  }, [globalLanguage, handleGenerateFullTimeSummary]);
 
   // Generate Catch-Up intelligence cards + synthesize & auto-play TTS audio
   const runCatchUp = useCallback(
@@ -803,6 +855,9 @@ export const Dashboard: React.FC = () => {
       if (myGenId !== generationIdRef.current) return;
 
       setCatchUp(res);
+      if (res.estimatedDurationSeconds && res.estimatedDurationSeconds > 0) {
+        setDuration(res.estimatedDurationSeconds);
+      }
       setIsGenerating(false);
       setStatusBadgeText(
         lang === "es"
@@ -1036,111 +1091,17 @@ export const Dashboard: React.FC = () => {
 
           {/* Step 6: End-of-Match (90' FullTime) Final Score & Match Summary Card */}
           {isFullTime && showFullTimeBanner && (
-            <section
-              aria-label="Full-Time Match Summary"
-              className="broadcast-slab rounded-2xl p-5 sm:p-6 border-2 border-emerald-500/40 bg-gradient-to-br from-white via-emerald-50/30 to-teal-50/40 relative"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-200">
-                <div className="flex items-center gap-3">
-                  <span className="px-3 py-1 rounded-md bg-emerald-600 text-white font-mono text-xs font-extrabold uppercase tracking-wider shadow-sm">
-                    {t.dashboard.fullTimeBanner.title}
-                  </span>
-                  <div>
-                    <h2 className="text-xl sm:text-2xl font-display font-black uppercase tracking-wide text-slate-900">
-                      Final Score: {match?.homeTeam.name ?? "Arsenal"}{" "}
-                      {match?.homeTeam.score ?? 2} –{" "}
-                      {match?.awayTeam.score ?? 1}{" "}
-                      {match?.awayTeam.name ?? "Liverpool"}
-                    </h2>
-                    <p className="text-xs font-mono text-slate-600">
-                      All 90 minutes &amp; scheduled events processed •{" "}
-                      {timeline.length} key events • Possession{" "}
-                      {match?.statistics.possession.home ?? 54}%–
-                      {match?.statistics.possession.away ?? 46}%
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={isGeneratingSummary}
-                    onClick={() => handleGenerateFullTimeSummary(true, true)}
-                    className="px-4 py-2 rounded-xl font-display font-black uppercase text-sm tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white shadow flex items-center gap-2 transition-all cursor-pointer disabled:opacity-60"
-                  >
-                    <BallIcon className="w-4 h-4 text-white shrink-0" />
-                    <span>
-                      {isGeneratingSummary
-                        ? t.dashboard.fullTimeBanner.generatingBtn
-                        : fullTimeSummary
-                          ? t.dashboard.fullTimeBanner.generateBtn + " ↻"
-                          : t.dashboard.fullTimeBanner.generateBtn}
-                    </span>
-                    <HeadphonesIcon className="w-4 h-4 text-white shrink-0" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowFullTimeBanner(false)}
-                    aria-label="Close Full-Time Summary"
-                    title="Close Full-Time Summary"
-                    className="w-8 h-8 rounded-lg bg-white hover:bg-red-50 text-slate-500 hover:text-red-600 border border-slate-200 hover:border-red-300 flex items-center justify-center transition-colors cursor-pointer"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              {fullTimeSummary ? (
-                <div className="bg-white/90 rounded-xl p-4 sm:p-5 border border-emerald-200 shadow-inner space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono text-slate-500">
-                    <span className="font-bold text-emerald-700 uppercase">
-                      90-Minute Personalized Match Report ({fullTimeSummary.mode}{" "}
-                      • {fullTimeSummary.favoriteTeam})
-                    </span>
-                    <span>
-                      {fullTimeSummary.wordCount} words • ~
-                      {fullTimeSummary.estimatedDurationSeconds}s audio
-                    </span>
-                  </div>
-                  <div className="text-sm sm:text-base text-slate-800 leading-relaxed whitespace-pre-line">
-                    {fullTimeSummary.story}
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {insights.map((ins, idx) => (
-                    <div
-                      key={`${ins.minute}-${idx}`}
-                      className="bg-white rounded-xl p-3.5 border border-slate-200 shadow-sm"
-                    >
-                      <div className="flex items-center justify-between text-xs font-mono mb-1">
-                        <span className="font-extrabold text-pl-purple">
-                          {ins.minute}&apos; • {ins.type}
-                        </span>
-                      </div>
-                      <p className="text-xs sm:text-sm font-bold text-slate-900">
-                        {ins.summary}
-                      </p>
-                      <p className="text-xs text-slate-600 mt-1">
-                        {ins.reason}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
+            <FinalScoreContainer
+              match={match}
+              timeline={timeline}
+              insights={insights}
+              fullTimeSummary={fullTimeSummary}
+              isGeneratingSummary={isGeneratingSummary}
+              onGenerateSummary={handleGenerateFullTimeSummary}
+              onClose={() => setShowFullTimeBanner(false)}
+              onPlayAudio={handlePlaySummaryAudio}
+              isPlayingAudio={isPlaying}
+            />
           )}
 
           {/* 4. Hero Console */}

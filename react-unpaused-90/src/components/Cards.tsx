@@ -117,6 +117,19 @@ export const Cards: React.FC<CardsProps> = ({
           >
             {statusBadgeText || `${t.cards.deckWindow} ${windowStr}`}
           </span>
+          {catchUp?.wordCount ? (
+            <span
+              id="cards-length-badge"
+              className="hidden sm:inline-flex text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-300"
+            >
+              {catchUp.length === "5m"
+                ? "5m Deep"
+                : catchUp.length === "full"
+                ? "Full Match"
+                : "1m Sprint"}{" "}
+              • {catchUp.wordCount}w • ~{catchUp.estimatedDurationSeconds}s
+            </span>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-3">
@@ -156,7 +169,7 @@ export const Cards: React.FC<CardsProps> = ({
               {t.cards.card1.title}
             </h3>
             <p
-              className={`text-xs sm:text-sm text-slate-600 leading-relaxed ${
+              className={`text-xs sm:text-sm text-slate-600 leading-relaxed whitespace-pre-line ${
                 isGenerating ? "animate-pulse" : ""
               }`}
               id="card1-body"
@@ -238,7 +251,7 @@ export const Cards: React.FC<CardsProps> = ({
               {t.cards.card2.title}
             </h3>
             <p
-              className={`text-xs sm:text-sm text-slate-600 leading-relaxed ${
+              className={`text-xs sm:text-sm text-slate-600 leading-relaxed whitespace-pre-line ${
                 isGenerating ? "animate-pulse" : ""
               }`}
               id="card2-body"
@@ -296,7 +309,7 @@ export const Cards: React.FC<CardsProps> = ({
               {t.cards.card3.title}
             </h3>
             <p
-              className={`text-xs sm:text-sm text-slate-600 leading-relaxed ${
+              className={`text-xs sm:text-sm text-slate-600 leading-relaxed whitespace-pre-line ${
                 isGenerating ? "animate-pulse" : ""
               }`}
               id="card3-body"
@@ -373,7 +386,7 @@ export const Cards: React.FC<CardsProps> = ({
               {t.cards.card4.title}
             </h3>
             <p
-              className={`text-xs sm:text-sm text-slate-600 leading-relaxed ${
+              className={`text-xs sm:text-sm text-slate-600 leading-relaxed whitespace-pre-line ${
                 isGenerating ? "animate-pulse" : ""
               }`}
               id="card4-body"
