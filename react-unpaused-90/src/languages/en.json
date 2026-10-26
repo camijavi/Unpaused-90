@@ -28,6 +28,15 @@
     "possession": "POSSESSION:",
     "timelineInstruction": "Click any event marker (Goal, Red Card, Yellow Card, Substitution) to trigger its broadcast animation & tactical breakdown",
     "timelineEvent": "TIMELINE EVENT",
+    "eventTypes": {
+      "goal": "GOAL",
+      "yellowCard": "YELLOW CARD",
+      "redCard": "RED CARD",
+      "substitution": "SUBSTITUTION",
+      "pressureSequence": "PRESSURE SEQUENCE",
+      "shot": "SHOT",
+      "penalty": "PENALTY"
+    },
     "replayAnimation": "▶ Replay Event Animation",
     "halves": {
       "firstHalf": "1st Half",

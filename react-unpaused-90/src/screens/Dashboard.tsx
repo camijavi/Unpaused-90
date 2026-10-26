@@ -457,7 +457,8 @@ export const Dashboard: React.FC = () => {
         ev,
         homeCode,
         homeName,
-        awayName
+        awayName,
+        lang
       );
 
       setEventExplanation({
@@ -571,6 +572,7 @@ export const Dashboard: React.FC = () => {
           // Focus the newest event in the inspector and trigger its broadcast animation
           const latestNew = newEvents[newEvents.length - 1];
           setSelectedEvent(latestNew);
+          setEventExplanation(null);
 
           const homeCode = liveMatch.homeTeam.teamId ?? "ARS";
           const homeName = liveMatch.homeTeam.name ?? "Arsenal";

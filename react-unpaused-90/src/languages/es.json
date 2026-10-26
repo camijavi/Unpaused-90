@@ -28,6 +28,15 @@
     "possession": "POSESIÓN:",
     "timelineInstruction": "Haz clic en cualquier evento (Gol, Tarjeta Roja, Tarjeta Amarilla, Sustitución) para ver su animación de transmisión y análisis táctico",
     "timelineEvent": "EVENTO DEL PARTIDO",
+    "eventTypes": {
+      "goal": "GOL",
+      "yellowCard": "TARJETA AMARILLA",
+      "redCard": "TARJETA ROJA",
+      "substitution": "SUSTITUCIÓN",
+      "pressureSequence": "PRESIÓN ALTA",
+      "shot": "TIRO",
+      "penalty": "PENAL"
+    },
     "replayAnimation": "▶ Reproducir Animación del Evento",
     "halves": {
       "firstHalf": "1er Tiempo",

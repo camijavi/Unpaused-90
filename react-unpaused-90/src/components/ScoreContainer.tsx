@@ -54,6 +54,7 @@ export function formatTimelineEventTitle(
   homeCode: string,
   homeName: string,
   awayName: string,
+  lang: "en" | "es" = "en",
 ): {
   clubName: string;
   playerLine: string;
@@ -61,35 +62,59 @@ export function formatTimelineEventTitle(
   fallbackDesc: string;
 } {
   const clubName = ev.team === homeCode ? homeName : awayName;
+  const isEs = lang === "es";
+
   if (ev.eventType === "Goal") {
-    const assistText = ev.assist ? ` (Assist: ${ev.assist})` : "";
+    const assistText = ev.assist
+      ? isEs
+        ? ` (Asistencia: ${ev.assist})`
+        : ` (Assist: ${ev.assist})`
+      : "";
     return {
       clubName: clubName.toUpperCase(),
       playerLine: `${ev.player ?? clubName} (${ev.minute}')`,
-      title: `${ev.player ?? clubName} Goal (${ev.minute}')${assistText}`,
-      fallbackDesc: `Clinical finish by ${ev.player ?? clubName}${
-        ev.assist ? ` following a decisive pass from ${ev.assist}` : ""
-      } in the ${ev.minute}th minute.`,
+      title: isEs
+        ? `Gol de ${ev.player ?? clubName} (${ev.minute}')${assistText}`
+        : `${ev.player ?? clubName} Goal (${ev.minute}')${assistText}`,
+      fallbackDesc: isEs
+        ? `Definición clínica de ${ev.player ?? clubName}${
+            ev.assist ? ` tras una asistencia decisiva de ${ev.assist}` : ""
+          } al minuto ${ev.minute}'.`
+        : `Clinical finish by ${ev.player ?? clubName}${
+            ev.assist ? ` following a decisive pass from ${ev.assist}` : ""
+          } in the ${ev.minute}th minute.`,
     };
   }
   if (ev.eventType === "YellowCard") {
     return {
       clubName: clubName.toUpperCase(),
       playerLine: `${ev.player ?? clubName} (${ev.minute}')`,
-      title: `${ev.player ?? clubName} Tactical Yellow Card (${ev.minute}')`,
-      fallbackDesc: `Official disciplinary caution shown to ${
-        ev.player ?? clubName
-      } at ${ev.minute}', forcing extra caution in midfield duels.`,
+      title: isEs
+        ? `Tarjeta Amarilla para ${ev.player ?? clubName} (${ev.minute}')`
+        : `${ev.player ?? clubName} Tactical Yellow Card (${ev.minute}')`,
+      fallbackDesc: isEs
+        ? `Amonestación arbitral para ${
+            ev.player ?? clubName
+          } al minuto ${ev.minute}', exigiendo mayor cautela en las disputas.`
+        : `Official disciplinary caution shown to ${
+            ev.player ?? clubName
+          } at ${ev.minute}', forcing extra caution in midfield duels.`,
     };
   }
   if (ev.eventType === "RedCard") {
     return {
       clubName: clubName.toUpperCase(),
       playerLine: `${ev.player ?? clubName} (${ev.minute}')`,
-      title: `${ev.player ?? clubName} Red Card Dismissal (${ev.minute}')`,
-      fallbackDesc: `${clubName} reduced to 10 men after ${
-        ev.player ?? clubName
-      } is sent off at ${ev.minute}'.`,
+      title: isEs
+        ? `Tarjeta Roja para ${ev.player ?? clubName} (${ev.minute}')`
+        : `${ev.player ?? clubName} Red Card Dismissal (${ev.minute}')`,
+      fallbackDesc: isEs
+        ? `${clubName} se queda con 10 hombres tras la expulsión de ${
+            ev.player ?? clubName
+          } al minuto ${ev.minute}'.`
+        : `${clubName} reduced to 10 men after ${
+            ev.player ?? clubName
+          } is sent off at ${ev.minute}'.`,
     };
   }
   if (ev.eventType === "Substitution") {
@@ -98,29 +123,49 @@ export function formatTimelineEventTitle(
       playerLine: `${ev.playerIn ?? "Sub"} IN • ${ev.playerOut ?? "Sub"} OUT (${
         ev.minute
       }')`,
-      title: `Tactical Substitution (${ev.minute}'): ${ev.playerIn} replaces ${ev.playerOut}`,
-      fallbackDesc: `Fresh legs introduced by ${clubName} at ${ev.minute}' as ${ev.playerIn} comes on for ${ev.playerOut}.`,
+      title: isEs
+        ? `Sustitución Táctica (${ev.minute}'): ${ev.playerIn} entra por ${ev.playerOut}`
+        : `Tactical Substitution (${ev.minute}'): ${ev.playerIn} replaces ${ev.playerOut}`,
+      fallbackDesc: isEs
+        ? `Piernas frescas en ${clubName} al minuto ${ev.minute}': entra ${ev.playerIn} en lugar de ${ev.playerOut}.`
+        : `Fresh legs introduced by ${clubName} at ${ev.minute}' as ${ev.playerIn} comes on for ${ev.playerOut}.`,
     };
   }
   if (ev.eventType === "PressureSequence") {
     return {
       clubName: clubName.toUpperCase(),
-      playerLine: `${clubName} High Press (${ev.durationSeconds ?? 90}s Wave)`,
-      title: `${clubName} Sustained Pressure Sequence (${ev.minute}')`,
-      fallbackDesc: `${clubName} pinned the opposition inside their defensive third for ${
-        ev.durationSeconds ?? 90
-      } seconds (Importance: ${ev.importanceScore ?? 80}/100).`,
+      playerLine: isEs
+        ? `Presión Alta de ${clubName} (${ev.durationSeconds ?? 90}s)`
+        : `${clubName} High Press (${ev.durationSeconds ?? 90}s Wave)`,
+      title: isEs
+        ? `Secuencia de Presión Sostenida de ${clubName} (${ev.minute}')`
+        : `${clubName} Sustained Pressure Sequence (${ev.minute}')`,
+      fallbackDesc: isEs
+        ? `${clubName} arrinconó al rival en su tercio defensivo durante ${
+            ev.durationSeconds ?? 90
+          } segundos.`
+        : `${clubName} pinned the opposition inside their defensive third for ${
+            ev.durationSeconds ?? 90
+          } seconds (Importance: ${ev.importanceScore ?? 80}/100).`,
     };
   }
   return {
     clubName: clubName.toUpperCase(),
     playerLine: `${ev.player ?? clubName} (${ev.minute}')`,
-    title: `${ev.player ?? clubName} ${ev.eventType} (${ev.minute}')${
-      ev.onTarget ? " — On Target" : ""
-    }`,
-    fallbackDesc: `Key ${ev.eventType.toLowerCase()} by ${
-      ev.player ?? clubName
-    } at minute ${ev.minute}'.`,
+    title: isEs
+      ? `${ev.eventType} de ${ev.player ?? clubName} (${ev.minute}')${
+          ev.onTarget ? " — A Puerta" : ""
+        }`
+      : `${ev.player ?? clubName} ${ev.eventType} (${ev.minute}')${
+          ev.onTarget ? " — On Target" : ""
+        }`,
+    fallbackDesc: isEs
+      ? `Acción clave (${ev.eventType}) de ${
+          ev.player ?? clubName
+        } al minuto ${ev.minute}'.`
+      : `Key ${ev.eventType.toLowerCase()} by ${
+          ev.player ?? clubName
+        } at minute ${ev.minute}'.`,
   };
 }
 
@@ -249,7 +294,7 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
   onTriggerAnimation,
   onSelectTimelineEvent,
 }) => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const homeCode = match?.homeTeam.teamId ?? "ARS";
   const awayCode = match?.awayTeam.teamId ?? "LIV";
   const homeName = match?.homeTeam.name ?? "Arsenal";
@@ -413,7 +458,7 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
   const nowPct = Math.min(100, Math.max(0, (currentMinute / 90) * 100));
 
   const formattedActiveEv = activeEv
-    ? formatTimelineEventTitle(activeEv, homeCode, homeName, awayName)
+    ? formatTimelineEventTitle(activeEv, homeCode, homeName, awayName, language)
     : null;
 
   const matchingInsight = activeEv
@@ -951,7 +996,7 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
               ...homeLayout.pins.map((p) => ({ ...p, top: homePinTop(p.row) })),
               ...awayLayout.pins.map((p) => ({ ...p, top: awayPinTop(p.row) })),
             ].map(({ ev, pinX, width, top }) => {
-              const info = formatTimelineEventTitle(ev, homeCode, homeName, awayName);
+              const info = formatTimelineEventTitle(ev, homeCode, homeName, awayName, language);
               const kind = mapEventTypeToAnimationKind(ev.eventType);
               const inWindow = ev.minute >= stoppedMinute && ev.minute <= currentMinute;
               const isSelected = activeEv?.eventId === ev.eventId;
@@ -1046,7 +1091,18 @@ export const ScoreContainer: React.FC<ScoreContainerProps> = ({
                   {mapEventTypeToAnimationKind(activeEv.eventType) ===
                     "sub" && <SubIcon className="w-3.5 h-3.5 text-sky-300" />}
                   <span>
-                    {activeEv.minute}&apos; {activeEv.eventType.toUpperCase()}
+                    {activeEv.minute}&apos;{" "}
+                    {(() => {
+                      const et = activeEv.eventType.toLowerCase();
+                      if (et.includes("goal")) return t.scoreContainer.eventTypes.goal;
+                      if (et.includes("yellow")) return t.scoreContainer.eventTypes.yellowCard;
+                      if (et.includes("red")) return t.scoreContainer.eventTypes.redCard;
+                      if (et.includes("sub")) return t.scoreContainer.eventTypes.substitution;
+                      if (et.includes("pressure")) return t.scoreContainer.eventTypes.pressureSequence;
+                      if (et.includes("shot")) return t.scoreContainer.eventTypes.shot;
+                      if (et.includes("penalty")) return t.scoreContainer.eventTypes.penalty;
+                      return activeEv.eventType.toUpperCase();
+                    })()}
                   </span>
                 </>
               ) : (
