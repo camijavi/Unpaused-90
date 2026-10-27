@@ -1,6 +1,6 @@
 import React from "react";
 import type { MatchData, MatchSummaryDto } from "../types/match";
-import { BallIcon } from "./Icons";
+import { BallIcon, DiceIcon } from "./Icons";
 import { useLanguage } from "../languages/LanguageContext";
 
 interface LiveGroundsProps {
@@ -62,10 +62,10 @@ export const LiveGrounds: React.FC<LiveGroundsProps> = ({
             <button
               type="button"
               onClick={() => onResetSimulation("random")}
-              className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-pl-purple bg-purple-50 hover:bg-purple-100 border border-purple-200 transition-colors flex items-center gap-1.5"
+              className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-pl-purple bg-purple-50 hover:bg-purple-100 border border-purple-200 transition-colors flex items-center gap-1.5 cursor-pointer"
               title="Pick a random match from Azure Blob Storage and reset live minute"
             >
-              <span>🎲</span>
+              <DiceIcon className="w-3.5 h-3.5 text-pl-purple shrink-0" />
               <span>{t.liveGrounds.simulateRandom}</span>
             </button>
           )}
