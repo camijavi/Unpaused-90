@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Azure.Core;
 using Azure.Storage.Blobs;
@@ -14,6 +15,7 @@ public class MatchService
     private readonly IConfiguration _configuration;
     private readonly ILogger<MatchService> _logger;
     private readonly TokenCredential _credential;
+    private readonly string _localCacheDir;
     private readonly string _localCacheFilePath;
     private readonly SemaphoreSlim _loadLock = new(1, 1);
     private readonly object _simLock = new();
@@ -21,6 +23,10 @@ public class MatchService
     {
         PropertyNameCaseInsensitive = true
     };
+
+    private readonly ConcurrentDictionary<string, (MatchData Master, List<MatchData> Snapshots)> _matchCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string> _matchIdToBlobName = new(StringComparer.OrdinalIgnoreCase);
+    private List<string> _discoveredBlobNames = [];
 
     private MatchData? _masterMatch;
     private List<MatchData> _syntheticSnapshots = [];
@@ -42,9 +48,9 @@ public class MatchService
         _secondsPerSimulatedMinute = configuration.GetValue<double?>("Simulation:SecondsPerMinute")
             ?? DefaultSecondsPerSimulatedMinute;
 
-        var cacheDir = Path.Combine(env.ContentRootPath, "obj");
-        Directory.CreateDirectory(cacheDir);
-        _localCacheFilePath = Path.Combine(cacheDir, "cached-match-data.json");
+        _localCacheDir = Path.Combine(env.ContentRootPath, "obj");
+        Directory.CreateDirectory(_localCacheDir);
+        _localCacheFilePath = Path.Combine(_localCacheDir, "cached-match-data.json");
 
         // Simulation starts at a random minute between 1 and 90 to simulate a match in progress
         _simulationStartMinute = Random.Shared.Next(1, 91);
@@ -71,9 +77,10 @@ public class MatchService
 
     /// <summary>
     /// Resets the live simulation to a new random minute between 1 and 90 (or an explicit minute if provided).
+    /// If matchId is "random" or empty, picks a new random match from the container.
     /// </summary>
     public async Task<MatchData?> ResetSimulationAsync(
-        string matchId,
+        string? matchId = null,
         int? explicitStartMinute = null,
         CancellationToken cancellationToken = default)
     {
@@ -85,12 +92,19 @@ public class MatchService
             _simulationStartUtc = DateTimeOffset.UtcNow;
         }
 
+        if (string.IsNullOrWhiteSpace(matchId) || string.Equals(matchId, "random", StringComparison.OrdinalIgnoreCase))
+        {
+            _masterMatch = null;
+        }
+
+        var match = await GetMatchAsync(matchId, cancellationToken);
+
         _logger.LogInformation(
             "Reset Live Match Simulation for '{MatchId}' to starting minute {StartMinute}'.",
-            matchId,
+            match?.MatchId ?? matchId ?? "random",
             _simulationStartMinute);
 
-        return await GetMatchAsync(matchId, cancellationToken);
+        return match;
     }
 
     /// <summary>
@@ -112,18 +126,29 @@ public class MatchService
             ? Math.Clamp(overrideMinute.Value, 1, 90)
             : GetCurrentSimulatedMinute();
 
-        return BuildMatchSnapshotAtMinute(master, currentMinute);
+        var snapshots = _matchCache.TryGetValue(master.MatchId, out var cached)
+            ? cached.Snapshots
+            : _syntheticSnapshots;
+
+        return BuildMatchSnapshotAtMinute(master, currentMinute, snapshots);
     }
 
     /// <summary>
-    /// Loads the complete 90-minute real match data directly from Azure Blob Storage via Entra ID TokenCredential.
+    /// Loads a match from Azure Blob Storage via Entra ID TokenCredential.
+    /// If matchId is omitted or "random", randomly selects one of the match blobs in the container.
     /// </summary>
     public async Task<MatchData?> GetMasterMatchAsync(
         string? matchId = null,
         CancellationToken cancellationToken = default)
     {
-        if (_masterMatch is not null &&
-            (string.IsNullOrWhiteSpace(matchId) || string.Equals(_masterMatch.MatchId, matchId, StringComparison.OrdinalIgnoreCase)))
+        var isRandom = string.IsNullOrWhiteSpace(matchId) || string.Equals(matchId, "random", StringComparison.OrdinalIgnoreCase);
+
+        if (!isRandom && _matchCache.TryGetValue(matchId!, out var cachedDirect))
+        {
+            return cachedDirect.Master;
+        }
+
+        if (isRandom && _masterMatch is not null)
         {
             return _masterMatch;
         }
@@ -131,33 +156,83 @@ public class MatchService
         await _loadLock.WaitAsync(cancellationToken);
         try
         {
-            if (_masterMatch is not null &&
-                (string.IsNullOrWhiteSpace(matchId) || string.Equals(_masterMatch.MatchId, matchId, StringComparison.OrdinalIgnoreCase)))
+            if (!isRandom && _matchCache.TryGetValue(matchId!, out var lockedDirect))
+            {
+                return lockedDirect.Master;
+            }
+
+            if (isRandom && _masterMatch is not null)
             {
                 return _masterMatch;
             }
 
-            try
+            var containerClient = CreateBlobContainerClient();
+            var availableBlobs = await GetAvailableBlobNamesAsync(containerClient, cancellationToken);
+            if (availableBlobs.Count == 0)
             {
-                _masterMatch = await LoadMatchDataFromBlobAsync(cancellationToken);
-                return _masterMatch;
+                availableBlobs = ["arsenal-liverpool.json"];
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to load real match data directly from Azure Blob Storage.");
 
-                if (File.Exists(_localCacheFilePath))
+            string? chosenBlob = null;
+
+            if (!isRandom)
+            {
+                if (_matchIdToBlobName.TryGetValue(matchId!, out var mapped))
                 {
-                    _logger.LogWarning("Falling back to local disk copy of downloaded match data: {Path}", _localCacheFilePath);
-                    var cachedJson = await File.ReadAllTextAsync(_localCacheFilePath, cancellationToken);
-                    var (master, snapshots) = ParseMatchPayload(cachedJson);
-                    _masterMatch = master;
-                    _syntheticSnapshots = snapshots;
-                    return _masterMatch;
+                    chosenBlob = mapped;
                 }
-
-                throw;
+                else
+                {
+                    // Scan available blobs until matching matchId is found
+                    foreach (var blobName in availableBlobs)
+                    {
+                        var (loadedMaster, _) = await LoadMatchByBlobNameAsync(containerClient, blobName, cancellationToken);
+                        if (string.Equals(loadedMaster.MatchId, matchId, StringComparison.OrdinalIgnoreCase))
+                        {
+                            chosenBlob = blobName;
+                            break;
+                        }
+                    }
+                }
             }
+
+            // If random or not found, pick randomly among all available blobs in the container
+            if (chosenBlob is null)
+            {
+                var randIndex = Random.Shared.Next(availableBlobs.Count);
+                chosenBlob = availableBlobs[randIndex];
+                _logger.LogInformation(
+                    "Selected random match blob '{BlobName}' ({Index}/{Count}) from Azure Blob Storage.",
+                    chosenBlob,
+                    randIndex + 1,
+                    availableBlobs.Count);
+            }
+
+            var (master, snapshots) = await LoadMatchByBlobNameAsync(containerClient, chosenBlob, cancellationToken);
+            _masterMatch = master;
+            _syntheticSnapshots = snapshots;
+            return _masterMatch;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load real match data directly from Azure Blob Storage.");
+
+            if (_masterMatch is not null)
+            {
+                return _masterMatch;
+            }
+
+            if (File.Exists(_localCacheFilePath))
+            {
+                _logger.LogWarning("Falling back to local disk copy of downloaded match data: {Path}", _localCacheFilePath);
+                var cachedJson = await File.ReadAllTextAsync(_localCacheFilePath, cancellationToken);
+                var (master, snapshots) = ParseMatchPayload(cachedJson);
+                _masterMatch = master;
+                _syntheticSnapshots = snapshots;
+                return _masterMatch;
+            }
+
+            throw;
         }
         finally
         {
@@ -392,50 +467,94 @@ public class MatchService
         };
     }
 
-    public async Task RefreshFromBlobStorageSilentlyAsync()
+    public async Task<List<MatchSummaryDto>> GetAllMatchesAsync(CancellationToken cancellationToken = default)
     {
+        var activeMaster = await GetMasterMatchAsync(cancellationToken: cancellationToken);
+
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            var fresh = await LoadMatchDataFromBlobAsync(cts.Token);
-            if (fresh is not null)
+            var containerClient = CreateBlobContainerClient();
+            var availableBlobs = await GetAvailableBlobNamesAsync(containerClient, cancellationToken);
+            var results = new List<MatchSummaryDto>();
+
+            foreach (var blobName in availableBlobs)
             {
-                _masterMatch = fresh;
+                try
+                {
+                    MatchData master;
+                    var matchEntry = _matchCache.Values.FirstOrDefault(v =>
+                        _matchIdToBlobName.TryGetValue(v.Master.MatchId, out var b) &&
+                        string.Equals(b, blobName, StringComparison.OrdinalIgnoreCase));
+
+                    if (matchEntry != default)
+                    {
+                        master = matchEntry.Master;
+                    }
+                    else
+                    {
+                        var (m, _) = await LoadMatchByBlobNameAsync(containerClient, blobName, cancellationToken);
+                        master = m;
+                    }
+
+                    var snapshot = await GetMatchAsync(master.MatchId, cancellationToken);
+                    var cur = snapshot ?? master;
+
+                    results.Add(new MatchSummaryDto(
+                        MatchId: cur.MatchId,
+                        Competition: cur.Competition,
+                        Stadium: cur.Stadium,
+                        HomeTeam: cur.HomeTeam.Name,
+                        AwayTeam: cur.AwayTeam.Name,
+                        HomeScore: cur.HomeTeam.Score,
+                        AwayScore: cur.AwayTeam.Score,
+                        Score: $"{cur.HomeTeam.Score}-{cur.AwayTeam.Score}",
+                        CurrentMinute: cur.CurrentMinute,
+                        Status: cur.Status
+                    ));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("Could not load summary for blob '{Blob}': {Message}", blobName, ex.Message);
+                }
+            }
+
+            // Put the active randomly chosen match first so clients defaulting to list[0] get the random match
+            if (activeMaster is not null)
+            {
+                var idx = results.FindIndex(r => r.MatchId.Equals(activeMaster.MatchId, StringComparison.OrdinalIgnoreCase));
+                if (idx > 0)
+                {
+                    var item = results[idx];
+                    results.RemoveAt(idx);
+                    results.Insert(0, item);
+                }
+            }
+
+            if (results.Count > 0)
+            {
+                return results;
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning("Background refresh from Azure Blob Storage skipped ({Message}).", ex.Message);
-        }
-    }
-
-    public async Task<List<MatchSummaryDto>> GetAllMatchesAsync(CancellationToken cancellationToken = default)
-    {
-        var master = await GetMasterMatchAsync(cancellationToken: cancellationToken);
-        if (master is null)
-        {
-            return [];
+            _logger.LogWarning("Listing blobs for all matches skipped ({Message}).", ex.Message);
         }
 
-        var match = await GetMatchAsync(master.MatchId, cancellationToken);
-        if (match is null)
-        {
-            return [];
-        }
-
-        return
-        [
+        if (activeMaster is null) return [];
+        var activeSnap = await GetMatchAsync(activeMaster.MatchId, cancellationToken);
+        var activeCur = activeSnap ?? activeMaster;
+        return [
             new MatchSummaryDto(
-                MatchId: match.MatchId,
-                Competition: match.Competition,
-                Stadium: match.Stadium,
-                HomeTeam: match.HomeTeam.Name,
-                AwayTeam: match.AwayTeam.Name,
-                HomeScore: match.HomeTeam.Score,
-                AwayScore: match.AwayTeam.Score,
-                Score: $"{match.HomeTeam.Score}-{match.AwayTeam.Score}",
-                CurrentMinute: match.CurrentMinute,
-                Status: match.Status
+                MatchId: activeCur.MatchId,
+                Competition: activeCur.Competition,
+                Stadium: activeCur.Stadium,
+                HomeTeam: activeCur.HomeTeam.Name,
+                AwayTeam: activeCur.AwayTeam.Name,
+                HomeScore: activeCur.HomeTeam.Score,
+                AwayScore: activeCur.AwayTeam.Score,
+                Score: $"{activeCur.HomeTeam.Score}-{activeCur.AwayTeam.Score}",
+                CurrentMinute: activeCur.CurrentMinute,
+                Status: activeCur.Status
             )
         ];
     }
@@ -460,28 +579,61 @@ public class MatchService
         return match?.GeneratedInsights;
     }
 
-    private async Task<MatchData?> LoadMatchDataFromBlobAsync(CancellationToken cancellationToken)
+    private BlobContainerClient CreateBlobContainerClient()
     {
         var blobEndpoint = _configuration["AzureBlob:ConnectionString"]
             ?? throw new InvalidOperationException("AzureBlob:ConnectionString is missing in appsettings.json.");
         var containerName = _configuration["AzureBlob:ContainerName"] ?? "matches";
-        var blobName = _configuration["AzureBlob:BlobName"] ?? "arsenal-liverpool.json";
 
         var serviceUri = new Uri(blobEndpoint);
-
-        _logger.LogInformation(
-            "Connecting to Azure Blob Storage ({ServiceUri}) via Microsoft Entra ID...",
-            serviceUri);
-
         var blobServiceClient = new BlobServiceClient(serviceUri, _credential);
-        var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
-        var blobClient = containerClient.GetBlobClient(blobName);
+        return blobServiceClient.GetBlobContainerClient(containerName);
+    }
 
+    private async Task<List<string>> GetAvailableBlobNamesAsync(
+        BlobContainerClient containerClient,
+        CancellationToken cancellationToken)
+    {
+        if (_discoveredBlobNames.Count > 0)
+        {
+            return _discoveredBlobNames;
+        }
+
+        var list = new List<string>();
+        await foreach (var item in containerClient.GetBlobsAsync(cancellationToken: cancellationToken))
+        {
+            if (item.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                list.Add(item.Name);
+            }
+        }
+
+        if (list.Count > 0)
+        {
+            _discoveredBlobNames = list;
+        }
+
+        return list;
+    }
+
+    private async Task<(MatchData Master, List<MatchData> Snapshots)> LoadMatchByBlobNameAsync(
+        BlobContainerClient containerClient,
+        string blobName,
+        CancellationToken cancellationToken)
+    {
+        var blobClient = containerClient.GetBlobClient(blobName);
         BlobDownloadResult downloadResult = await blobClient.DownloadContentAsync(cancellationToken);
         var json = downloadResult.Content.ToString();
 
+        var (master, snapshots) = ParseMatchPayload(json);
+
+        _matchCache[master.MatchId] = (master, snapshots);
+        _matchIdToBlobName[master.MatchId] = blobName;
+
         try
         {
+            var diskPath = Path.Combine(_localCacheDir, $"cached-{blobName}");
+            await File.WriteAllTextAsync(diskPath, json, cancellationToken);
             await File.WriteAllTextAsync(_localCacheFilePath, json, cancellationToken);
         }
         catch
@@ -490,12 +642,12 @@ public class MatchService
         }
 
         _logger.LogInformation(
-            "Successfully downloaded '{BlobName}' from Azure Blob container '{ContainerName}'.",
-            blobName,
-            containerName);
+            "Successfully loaded match '{MatchId}' ({HomeTeam} vs {AwayTeam}) from blob '{BlobName}'.",
+            master.MatchId,
+            master.HomeTeam.Name,
+            master.AwayTeam.Name,
+            blobName);
 
-        var (master, snapshots) = ParseMatchPayload(json);
-        _syntheticSnapshots = snapshots;
-        return master;
+        return (master, snapshots);
     }
 }
