@@ -72,6 +72,19 @@ export interface MatchData {
   generatedInsights: GeneratedInsight[];
 }
 
+export interface MatchSummaryDto {
+  matchId: string;
+  competition: string;
+  stadium: string;
+  homeTeam: string;
+  awayTeam: string;
+  homeScore: number;
+  awayScore: number;
+  score: string;
+  currentMinute: number;
+  status: string;
+}
+
 export interface CatchUpRequest {
   matchId: string;
   lastViewedMinute: number;

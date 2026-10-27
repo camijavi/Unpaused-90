@@ -24,6 +24,7 @@ import type {
   EventAnimationPayload,
   GeneratedInsight,
   MatchData,
+  MatchSummaryDto,
   PersonalizedSummaryResponse,
   TimelineEvent,
 } from "../types/match";
@@ -77,6 +78,7 @@ export const Dashboard: React.FC = () => {
   const [bias, setBias] = useState<string>("neutral");
   const [length, setLength] = useState<"1m" | "5m" | "full">("1m");
   const [lang, setLang] = useState<"en" | "es">("en");
+  const [availableMatches, setAvailableMatches] = useState<MatchSummaryDto[]>([]);
 
   // Keep local audio language in sync whenever the global language changes
   useEffect(() => {
@@ -583,18 +585,19 @@ export const Dashboard: React.FC = () => {
   );
 
   // Step 1 & Step 2: Initialize or Reset Match Simulation at a random minute (1..90)
-  const handleInitializeOrResetSimulation = useCallback(async () => {
+  const handleInitializeOrResetSimulation = useCallback(async (explicitMatchId?: string) => {
     try {
-      let targetId = currentMatchIdRef.current || match?.matchId;
-      if (!targetId) {
-        try {
-          const list = await fetchMatches();
-          if (list && list.length > 0) {
+      let targetId = explicitMatchId || currentMatchIdRef.current || match?.matchId;
+      try {
+        const list = await fetchMatches();
+        if (list && list.length > 0) {
+          setAvailableMatches(list);
+          if (!targetId || targetId === "random") {
             targetId = list[0].matchId;
           }
-        } catch {
-          // ignore
         }
+      } catch {
+        // ignore
       }
 
       const matchData = await resetMatchSimulation(targetId);
@@ -1216,7 +1219,9 @@ export const Dashboard: React.FC = () => {
           <LiveGrounds
             match={match}
             initialStartMinute={initialStartMinute}
-            onResetSimulation={handleInitializeOrResetSimulation}
+            availableMatches={availableMatches}
+            onSelectMatch={(mId) => handleInitializeOrResetSimulation(mId)}
+            onResetSimulation={(mId) => handleInitializeOrResetSimulation(mId)}
           />
 
           {/* 3. ScoreContainer + Real Match Timeline + Separate Event Animations */}

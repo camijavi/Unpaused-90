@@ -256,3 +256,19 @@ input[type="range"]::-webkit-slider-thumb {
   scrollbar-color: rgba(148, 163, 184, 0.45) rgba(241, 245, 249, 0.6);
 }
 
+@keyframes fade-in-popover {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.anim-fade-in {
+  animation: fade-in-popover 0.16s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+

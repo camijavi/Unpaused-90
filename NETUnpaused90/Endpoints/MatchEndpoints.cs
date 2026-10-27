@@ -41,6 +41,19 @@ public static class MatchEndpoints
         })
         .WithName("GetMatchById");
 
+        // POST /api/v1/matches/simulation/reset — Starts/restarts live simulation with optional matchId or random match
+        group.MapPost("/simulation/reset", async (
+            string? matchId,
+            int? startMinute,
+            MatchService matchService,
+            CancellationToken ct) =>
+        {
+            var match = await matchService.ResetSimulationAsync(matchId ?? "random", startMinute, ct);
+            return match is not null
+                ? Results.Ok(match)
+                : Results.NotFound(new { error = "Failed to reset simulation." });
+        });
+
         // POST /api/v1/matches/{matchId}/simulation/reset — Starts/restarts live simulation at a random minute (1..90)
         group.MapPost("/{matchId}/simulation/reset", async (
             string matchId,

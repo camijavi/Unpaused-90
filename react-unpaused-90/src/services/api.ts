@@ -84,7 +84,7 @@ export async function fetchMatchById(
   minute?: number
 ): Promise<MatchData> {
   const query = minute !== undefined ? `?minute=${minute}` : "";
-  const targetId = matchId || "PL2027-001";
+  const targetId = matchId || "random";
   const res = await fetchWithFallback(`/api/v1/matches/${targetId}${query}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch match ${targetId}: ${res.status}`);
@@ -97,7 +97,7 @@ export async function resetMatchSimulation(
   startMinute?: number
 ): Promise<MatchData> {
   const query = startMinute !== undefined ? `?startMinute=${startMinute}` : "";
-  const targetId = matchId || "PL2027-001";
+  const targetId = matchId || "random";
   const res = await fetchWithFallback(
     `/api/v1/matches/${targetId}/simulation/reset${query}`,
     {
