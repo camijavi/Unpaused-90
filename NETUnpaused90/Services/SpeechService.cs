@@ -108,29 +108,24 @@ public class SpeechService
             paragraphs.Add(request.Text.Trim());
         }
 
-        string? authHeaderValue = null;
-        var apiKey = _configuration["AzureSpeech:ApiKey"];
-        if (string.IsNullOrWhiteSpace(apiKey) || apiKey.StartsWith("<"))
-        {
-            var tokenTask = _credential.GetTokenAsync(
-                new TokenRequestContext(["https://cognitiveservices.azure.com/.default"]),
-                cancellationToken).AsTask();
-            var resourceIdTask = GetSpeechResourceIdAsync(cancellationToken);
+        var tokenTask = _credential.GetTokenAsync(
+            new TokenRequestContext(["https://cognitiveservices.azure.com/.default"]),
+            cancellationToken).AsTask();
+        var resourceIdTask = GetSpeechResourceIdAsync(cancellationToken);
 
-            await Task.WhenAll(tokenTask, resourceIdTask);
-            authHeaderValue = $"aad#{resourceIdTask.Result}#{tokenTask.Result.Token}";
-        }
+        await Task.WhenAll(tokenTask, resourceIdTask);
+        var authHeaderValue = $"aad#{resourceIdTask.Result}#{tokenTask.Result.Token}";
 
         var ttsUrl = $"https://{region}.tts.speech.microsoft.com/cognitiveservices/v1";
 
         _logger.LogInformation(
-            "Synthesizing audio using voice '{VoiceName}' (persona '{Persona}', {Language})...",
+            "Synthesizing audio via Entra ID using voice '{VoiceName}' (persona '{Persona}', {Language})...",
             synthesisVoice,
             selectedVoice,
             xmlLang);
 
         var ssml = BuildNaturalSsml(paragraphs, synthesisVoice, xmlLang, isSpanish);
-        var audioBytes = await SynthesizeSingleSegmentAsync(ttsUrl, ssml, apiKey, authHeaderValue, cancellationToken);
+        var audioBytes = await SynthesizeSingleSegmentAsync(ttsUrl, ssml, authHeaderValue, cancellationToken);
 
         return (audioBytes, selectedVoice, isSpanish ? "es" : "en");
     }
@@ -138,8 +133,7 @@ public class SpeechService
     private async Task<byte[]> SynthesizeSingleSegmentAsync(
         string ttsUrl,
         string ssml,
-        string? apiKey,
-        string? aadBearerToken,
+        string aadBearerToken,
         CancellationToken cancellationToken)
     {
         for (int attempt = 1; attempt <= 2; attempt++)
@@ -151,15 +145,7 @@ public class SpeechService
 
             httpRequest.Headers.Add("X-Microsoft-OutputFormat", "audio-24khz-96kbitrate-mono-mp3");
             httpRequest.Headers.Add("User-Agent", "Unpaused90App");
-
-            if (!string.IsNullOrWhiteSpace(apiKey) && !apiKey.StartsWith("<"))
-            {
-                httpRequest.Headers.Add("Ocp-Apim-Subscription-Key", apiKey);
-            }
-            else if (!string.IsNullOrWhiteSpace(aadBearerToken))
-            {
-                httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", aadBearerToken);
-            }
+            httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", aadBearerToken);
 
             using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
             if ((int)response.StatusCode == 429 && attempt == 1)

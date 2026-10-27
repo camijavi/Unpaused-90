@@ -16,10 +16,27 @@ public static class AiEndpoints
             AiService aiService,
             CancellationToken ct) =>
         {
-            var result = await aiService.GenerateCatchUpAsync(request, ct);
-            return result is not null
-                ? Results.Ok(result)
-                : Results.NotFound(new { error = $"Match '{request.MatchId}' not found." });
+            try
+            {
+                var result = await aiService.GenerateCatchUpAsync(request, ct);
+                return result is not null
+                    ? Results.Ok(result)
+                    : Results.NotFound(new { error = $"Match '{request.MatchId}' not found." });
+            }
+            catch (System.ClientModel.ClientResultException cre)
+            {
+                return Results.Json(new
+                {
+                    error = "Azure OpenAI Service Error",
+                    status = cre.Status,
+                    message = cre.Message,
+                    tip = "Add your Azure OpenAI API Key to appsettings.json ('AzureOpenAI:ApiKey') or configure the Entra ID role 'Cognitive Services OpenAI User'."
+                }, statusCode: cre.Status > 0 ? cre.Status : 502);
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { error = "AI generation failed", message = ex.Message }, statusCode: 500);
+            }
         })
         .WithName("GenerateCatchUp");
 
@@ -29,10 +46,27 @@ public static class AiEndpoints
             AiService aiService,
             CancellationToken ct) =>
         {
-            var result = await aiService.GeneratePersonalizedSummaryAsync(request, ct);
-            return result is not null
-                ? Results.Ok(result)
-                : Results.NotFound(new { error = $"Match '{request.MatchId}' not found." });
+            try
+            {
+                var result = await aiService.GeneratePersonalizedSummaryAsync(request, ct);
+                return result is not null
+                    ? Results.Ok(result)
+                    : Results.NotFound(new { error = $"Match '{request.MatchId}' not found." });
+            }
+            catch (System.ClientModel.ClientResultException cre)
+            {
+                return Results.Json(new
+                {
+                    error = "Azure OpenAI Service Error",
+                    status = cre.Status,
+                    message = cre.Message,
+                    tip = "Add your Azure OpenAI API Key to appsettings.json ('AzureOpenAI:ApiKey') or configure the Entra ID role 'Cognitive Services OpenAI User'."
+                }, statusCode: cre.Status > 0 ? cre.Status : 502);
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { error = "AI generation failed", message = ex.Message }, statusCode: 500);
+            }
         })
         .WithName("GeneratePersonalizedSummary");
 
@@ -42,10 +76,27 @@ public static class AiEndpoints
             AiService aiService,
             CancellationToken ct) =>
         {
-            var result = await aiService.ExplainEventAsync(request, ct);
-            return result is not null
-                ? Results.Ok(result)
-                : Results.NotFound(new { error = $"Match '{request.MatchId}' or Event '{request.EventId}' not found." });
+            try
+            {
+                var result = await aiService.ExplainEventAsync(request, ct);
+                return result is not null
+                    ? Results.Ok(result)
+                    : Results.NotFound(new { error = $"Match '{request.MatchId}' or Event '{request.EventId}' not found." });
+            }
+            catch (System.ClientModel.ClientResultException cre)
+            {
+                return Results.Json(new
+                {
+                    error = "Azure OpenAI Service Error",
+                    status = cre.Status,
+                    message = cre.Message,
+                    tip = "Add your Azure OpenAI API Key to appsettings.json ('AzureOpenAI:ApiKey') or configure the Entra ID role 'Cognitive Services OpenAI User'."
+                }, statusCode: cre.Status > 0 ? cre.Status : 502);
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { error = "AI generation failed", message = ex.Message }, statusCode: 500);
+            }
         })
         .WithName("ExplainEvent");
 
