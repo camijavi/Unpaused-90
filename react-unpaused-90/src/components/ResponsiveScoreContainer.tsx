@@ -9,8 +9,35 @@ import type {
   MatchData,
   TimelineEvent,
 } from "../types/match";
-import { ArsenalCrest, LiverpoolCrest, BallIcon } from "./Icons";
+import {
+  ArsenalCrest,
+  LiverpoolCrest,
+  ManCityCrest,
+  ChelseaCrest,
+  ManUnitedCrest,
+  TottenhamCrest,
+  NewcastleCrest,
+  AstonVillaCrest,
+  BrightonCrest,
+  EvertonCrest,
+  renderTeamCrest,
+  BallIcon,
+} from "./Icons";
 import { useLanguage } from "../languages/LanguageContext";
+
+export {
+  renderTeamCrest,
+  ArsenalCrest,
+  LiverpoolCrest,
+  ManCityCrest,
+  ChelseaCrest,
+  ManUnitedCrest,
+  TottenhamCrest,
+  NewcastleCrest,
+  AstonVillaCrest,
+  BrightonCrest,
+  EvertonCrest,
+};
 
 export interface ResponsiveScoreContainerProps {
   match: MatchData | null;
@@ -21,164 +48,6 @@ export interface ResponsiveScoreContainerProps {
   onTriggerAnimation?: (payload: EventAnimationPayload) => void;
   onSelectTimelineEvent?: (ev: TimelineEvent) => void;
   className?: string;
-}
-
-/**
- * Newcastle United crest SVG (supporting Newcastle vs Chelsea as shown in match designs).
- */
-export const NewcastleCrest: React.FC<{ className?: string }> = ({
-  className = "w-full h-full",
-}) => (
-  <svg
-    viewBox="0 0 100 100"
-    className={className}
-    aria-label="Newcastle United Crest"
-  >
-    <defs>
-      <linearGradient id="newCastleGold" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stopColor="#F59E0B" />
-        <stop offset="100%" stopColor="#D97706" />
-      </linearGradient>
-    </defs>
-    {/* Shield Base */}
-    <path
-      d="M20 22 H80 V55 C80 75 50 88 50 88 C50 88 20 75 20 55 Z"
-      fill="#1E293B"
-      stroke="#F59E0B"
-      strokeWidth="3.5"
-    />
-    {/* Black and White Stripes */}
-    <path d="M28 24 H36 V62 C33 59 30 56 28 53 Z" fill="#FFFFFF" />
-    <path d="M44 24 H56 V78 C54 77 52 76 50 75 C48 76 46 77 44 78 Z" fill="#FFFFFF" />
-    <path d="M64 24 H72 V53 C70 56 67 59 64 62 Z" fill="#FFFFFF" />
-    {/* Blue Chief with Club Ribbon */}
-    <rect x="22" y="24" width="56" height="12" fill="#0284C7" />
-    <text
-      x="50"
-      y="33"
-      textAnchor="middle"
-      fill="#FFFFFF"
-      fontFamily="sans-serif"
-      fontWeight="900"
-      fontSize="8.5"
-      letterSpacing="0.8"
-    >
-      NEWCASTLE
-    </text>
-    {/* Castle / Flag Motif on top */}
-    <path
-      d="M44 14 H56 V22 H44 Z M48 8 H52 V14 H48 Z"
-      fill="#F59E0B"
-    />
-  </svg>
-);
-
-/**
- * Chelsea FC crest SVG (supporting Newcastle vs Chelsea as shown in match designs).
- */
-export const ChelseaCrest: React.FC<{ className?: string }> = ({
-  className = "w-full h-full",
-}) => (
-  <svg
-    viewBox="0 0 100 100"
-    className={className}
-    aria-label="Chelsea FC Crest"
-  >
-    {/* Outer Blue Circle */}
-    <circle
-      cx="50"
-      cy="50"
-      r="44"
-      fill="#1D4ED8"
-      stroke="#F59E0B"
-      strokeWidth="3.5"
-    />
-    {/* Inner White Ring */}
-    <circle
-      cx="50"
-      cy="50"
-      r="33"
-      fill="#FFFFFF"
-      stroke="#1D4ED8"
-      strokeWidth="2"
-    />
-    {/* Blue Lion Rampant holding staff */}
-    <path
-      d="M46 32 C48 30 54 30 56 34 C58 38 54 42 56 46 C60 44 64 48 62 52 C58 56 56 62 58 68 L50 68 C48 64 46 60 48 56 C44 58 40 54 42 48 C44 44 42 38 46 32 Z"
-      fill="#1D4ED8"
-    />
-    {/* Staff */}
-    <line x1="57" y1="28" x2="57" y2="70" stroke="#F59E0B" strokeWidth="2.5" />
-    {/* Red Footballs / Roses */}
-    <circle cx="28" cy="50" r="3" fill="#DC2626" />
-    <circle cx="72" cy="50" r="3" fill="#DC2626" />
-    {/* Ring Text */}
-    <text
-      x="50"
-      y="22"
-      textAnchor="middle"
-      fill="#F59E0B"
-      fontFamily="sans-serif"
-      fontWeight="900"
-      fontSize="7.5"
-      letterSpacing="1"
-    >
-      CHELSEA
-    </text>
-    <text
-      x="50"
-      y="84"
-      textAnchor="middle"
-      fill="#F59E0B"
-      fontFamily="sans-serif"
-      fontWeight="900"
-      fontSize="6.5"
-      letterSpacing="1"
-    >
-      FOOTBALL CLUB
-    </text>
-  </svg>
-);
-
-/**
- * Resolves the appropriate crest SVG based on teamId or team name.
- */
-export function renderTeamCrest(
-  teamId?: string,
-  teamName?: string,
-  className = "w-14 h-14 sm:w-16 sm:h-16"
-) {
-  const code = (teamId ?? "").toUpperCase();
-  const name = (teamName ?? "").toLowerCase();
-
-  if (code === "ARS" || name.includes("arsenal")) {
-    return <ArsenalCrest className={className} />;
-  }
-  if (code === "LIV" || name.includes("liverpool")) {
-    return <LiverpoolCrest className={className} />;
-  }
-  if (code === "NEW" || name.includes("newcastle")) {
-    return <NewcastleCrest className={className} />;
-  }
-  if (code === "CHE" || name.includes("chelsea")) {
-    return <ChelseaCrest className={className} />;
-  }
-
-  // Dynamic fallback crest with team initials & gold border
-  const initials = (name || code || "FC")
-    .split(/\s+/)
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 3)
-    .toUpperCase();
-
-  return (
-    <div
-      className={`${className} rounded-full bg-gradient-to-br from-indigo-700 via-purple-800 to-slate-900 border-2 border-amber-400 flex items-center justify-center text-white font-display font-black text-sm shadow-md`}
-    >
-      {initials}
-    </div>
-  );
 }
 
 /**

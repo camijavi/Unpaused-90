@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type {
   MatchData,
   TimelineEvent,
@@ -7,6 +7,8 @@ import type {
 import { useLanguage } from "../languages/LanguageContext";
 import {
   BallIcon,
+  CheckIcon,
+  ChevronDownIcon,
   HeadphonesIcon,
   TimerIcon,
   FlashIcon,
@@ -50,8 +52,40 @@ export const FinalScoreContainer: React.FC<FinalScoreContainerProps> = ({
   onChangeMode,
   onChangeBias,
 }) => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [selectedLength, setSelectedLength] = useState<"1m" | "5m" | "full">("full");
+  const [openDropdown, setOpenDropdown] = useState<"persona" | "bias" | null>(null);
+
+  const personaRef = useRef<HTMLDivElement | null>(null);
+  const biasRef = useRef<HTMLDivElement | null>(null);
+
+  // Close dropdowns on outside click or Escape
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        personaRef.current &&
+        !personaRef.current.contains(target) &&
+        biasRef.current &&
+        !biasRef.current.contains(target)
+      ) {
+        setOpenDropdown(null);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpenDropdown(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   const homeTeamName = match?.homeTeam?.name ?? "Home";
   const awayTeamName = match?.awayTeam?.name ?? "Away";
@@ -67,6 +101,41 @@ export const FinalScoreContainer: React.FC<FinalScoreContainerProps> = ({
     .replace("{home}", String(homePossession))
     .replace("{away}", String(awayPossession));
 
+  const isSpanish = language === "es";
+
+  const homeLabel = homeTeamName
+    ? isSpanish
+      ? `Fan de ${homeTeamName}`
+      : `${homeTeamName} Fan`
+    : t.heroConsole.controls.bias.arsenal;
+
+  const awayLabel = awayTeamName
+    ? isSpanish
+      ? `Fan de ${awayTeamName}`
+      : `${awayTeamName} Fan`
+    : t.heroConsole.controls.bias.liverpool;
+
+  const personaOptions = [
+    {
+      id: "casual" as const,
+      label: t.heroConsole.controls.persona.casual.label,
+      sub: t.heroConsole.controls.persona.casual.sub,
+    },
+    {
+      id: "analyst" as const,
+      label: t.heroConsole.controls.persona.analyst.label,
+      sub: t.heroConsole.controls.persona.analyst.sub,
+    },
+    {
+      id: "child" as const,
+      label: t.heroConsole.controls.persona.child.label,
+      sub: t.heroConsole.controls.persona.child.sub,
+    },
+  ];
+
+  const currentPersona =
+    personaOptions.find((p) => p.id === mode) ?? personaOptions[0];
+
   const normalizedBiasKey = (() => {
     const b = (bias ?? "").toLowerCase();
     if (!b || b === "neutral" || b === "none") return "neutral";
@@ -76,6 +145,31 @@ export const FinalScoreContainer: React.FC<FinalScoreContainerProps> = ({
     if (b.includes(awayTeamName.toLowerCase()) || awayTeamName.toLowerCase().includes(b)) return "away";
     return b;
   })();
+
+  const biasOptions = [
+    {
+      id: "neutral",
+      label: t.heroConsole.controls.bias.neutral,
+      sub: isSpanish ? "Cobertura equilibrada 50/50" : "Balanced 50/50 broadcast",
+    },
+    {
+      id: "home",
+      label: homeLabel,
+      sub: isSpanish
+        ? `Perspectiva pro-${homeTeamName}`
+        : `Pro-${homeTeamName} perspective`,
+    },
+    {
+      id: "away",
+      label: awayLabel,
+      sub: isSpanish
+        ? `Perspectiva pro-${awayTeamName}`
+        : `Pro-${awayTeamName} perspective`,
+    },
+  ];
+
+  const currentBias =
+    biasOptions.find((b) => b.id === normalizedBiasKey) ?? biasOptions[0];
 
   const handleModeChange = (newMode: "casual" | "analyst" | "child") => {
     onChangeMode?.(newMode);
@@ -168,7 +262,7 @@ export const FinalScoreContainer: React.FC<FinalScoreContainerProps> = ({
       </div>
 
       {/* Persona & Bias Selector Callout */}
-      <div className="mb-4 p-3 sm:p-3.5 rounded-xl bg-gradient-to-r from-emerald-50/90 via-teal-50/70 to-slate-50 border border-emerald-200/90 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div className="mb-4 p-3 sm:p-3.5 rounded-xl bg-gradient-to-r from-emerald-50/90 via-teal-50/70 to-slate-50 border border-emerald-200/90 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3 relative z-30">
         <div className="flex items-start sm:items-center gap-2.5">
           <div className="p-1.5 rounded-lg bg-emerald-600/10 text-emerald-700 shrink-0 mt-0.5 sm:mt-0">
             <InfoIcon className="w-4 h-4" />
@@ -179,48 +273,168 @@ export const FinalScoreContainer: React.FC<FinalScoreContainerProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 shrink-0 self-start md:self-center font-mono text-[11px]">
-          {/* Persona Dropdown Pill */}
-          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-emerald-300 text-emerald-950 font-semibold shadow-2xs hover:border-emerald-400 focus-within:ring-2 focus-within:ring-emerald-500/20 transition-all">
-            <label
-              htmlFor="final-persona-select"
-              className="text-emerald-700 uppercase tracking-wider text-[10px] font-extrabold shrink-0 cursor-pointer"
-            >
-              {labels.personaLabel}:
-            </label>
-            <select
-              id="final-persona-select"
-              value={mode}
-              onChange={(e) =>
-                handleModeChange(e.target.value as "casual" | "analyst" | "child")
-              }
+          {/* Custom Persona Dropdown */}
+          <div ref={personaRef} className="relative">
+            <button
+              id="final-persona-select-btn"
+              type="button"
+              aria-haspopup="listbox"
+              aria-expanded={openDropdown === "persona"}
               aria-label={labels.personaLabel}
-              className="bg-transparent text-emerald-950 font-bold text-xs focus:outline-none cursor-pointer pr-1"
+              onClick={() =>
+                setOpenDropdown((prev) => (prev === "persona" ? null : "persona"))
+              }
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border text-emerald-950 font-semibold shadow-2xs transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-500/20 ${
+                openDropdown === "persona"
+                  ? "border-emerald-500 ring-2 ring-emerald-500/20 bg-emerald-50/30"
+                  : "border-emerald-300 hover:border-emerald-400 hover:bg-emerald-50/20"
+              }`}
             >
-              <option value="casual">{t.heroConsole.controls.persona.casual.label}</option>
-              <option value="analyst">{t.heroConsole.controls.persona.analyst.label}</option>
-              <option value="child">{t.heroConsole.controls.persona.child.label}</option>
-            </select>
+              <span className="text-emerald-700 uppercase tracking-wider text-[10px] font-mono font-extrabold shrink-0">
+                {labels.personaLabel}:
+              </span>
+              <span className="text-slate-900 font-bold text-xs truncate max-w-[130px] sm:max-w-[170px]">
+                {currentPersona.label}
+              </span>
+              <ChevronDownIcon
+                className={`w-3.5 h-3.5 text-emerald-600 transition-transform duration-200 shrink-0 ${
+                  openDropdown === "persona" ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+
+            {/* Persona Popover Menu */}
+            {openDropdown === "persona" && (
+              <div
+                role="listbox"
+                aria-label={labels.personaLabel}
+                className="absolute left-0 sm:left-auto sm:right-0 top-full mt-1.5 z-50 w-[240px] sm:w-[260px] bg-white rounded-xl border border-emerald-200 shadow-2xl p-1.5 space-y-1 backdrop-blur-md anim-fade-in"
+              >
+                <div className="px-2.5 py-1 border-b border-emerald-100 text-[10px] font-mono font-extrabold uppercase tracking-wider text-emerald-700 flex items-center justify-between">
+                  <span>{labels.personaLabel}</span>
+                  <span className="text-[9px] text-slate-400 font-normal">
+                    {personaOptions.length} {isSpanish ? "opciones" : "options"}
+                  </span>
+                </div>
+                {personaOptions.map((opt) => {
+                  const isSelected = mode === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      id={`final-persona-opt-${opt.id}`}
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      onClick={() => {
+                        handleModeChange(opt.id);
+                        setOpenDropdown(null);
+                      }}
+                      className={`w-full text-left px-2.5 py-2 rounded-lg text-xs transition-all flex items-center justify-between gap-2.5 cursor-pointer ${
+                        isSelected
+                          ? "bg-emerald-600 text-white font-bold shadow-xs"
+                          : "text-slate-800 hover:bg-emerald-50/80 font-semibold"
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs">{opt.label}</div>
+                        <div
+                          className={`text-[10px] truncate mt-0.5 ${
+                            isSelected ? "text-emerald-100" : "text-slate-500"
+                          }`}
+                        >
+                          {opt.sub}
+                        </div>
+                      </div>
+                      {isSelected && (
+                        <CheckIcon className="w-4 h-4 text-white shrink-0" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          {/* Bias Dropdown Pill */}
-          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-teal-300 text-teal-950 font-semibold shadow-2xs hover:border-teal-400 focus-within:ring-2 focus-within:ring-teal-500/20 transition-all">
-            <label
-              htmlFor="final-bias-select"
-              className="text-teal-700 uppercase tracking-wider text-[10px] font-extrabold shrink-0 cursor-pointer"
-            >
-              {labels.biasLabel}:
-            </label>
-            <select
-              id="final-bias-select"
-              value={normalizedBiasKey}
-              onChange={(e) => handleBiasChange(e.target.value)}
+          {/* Custom Bias Dropdown */}
+          <div ref={biasRef} className="relative">
+            <button
+              id="final-bias-select-btn"
+              type="button"
+              aria-haspopup="listbox"
+              aria-expanded={openDropdown === "bias"}
               aria-label={labels.biasLabel}
-              className="bg-transparent text-teal-950 font-bold text-xs focus:outline-none cursor-pointer pr-1"
+              onClick={() =>
+                setOpenDropdown((prev) => (prev === "bias" ? null : "bias"))
+              }
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white border text-teal-950 font-semibold shadow-2xs transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500/20 ${
+                openDropdown === "bias"
+                  ? "border-teal-500 ring-2 ring-teal-500/20 bg-teal-50/30"
+                  : "border-teal-300 hover:border-teal-400 hover:bg-teal-50/20"
+              }`}
             >
-              <option value="neutral">{t.heroConsole.controls.bias.neutral}</option>
-              <option value="home">{homeTeamName} Fan</option>
-              <option value="away">{awayTeamName} Fan</option>
-            </select>
+              <span className="text-teal-700 uppercase tracking-wider text-[10px] font-mono font-extrabold shrink-0">
+                {labels.biasLabel}:
+              </span>
+              <span className="text-slate-900 font-bold text-xs truncate max-w-[130px] sm:max-w-[170px]">
+                {currentBias.label}
+              </span>
+              <ChevronDownIcon
+                className={`w-3.5 h-3.5 text-teal-600 transition-transform duration-200 shrink-0 ${
+                  openDropdown === "bias" ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+
+            {/* Bias Popover Menu */}
+            {openDropdown === "bias" && (
+              <div
+                role="listbox"
+                aria-label={labels.biasLabel}
+                className="absolute right-0 top-full mt-1.5 z-50 w-[240px] sm:w-[260px] bg-white rounded-xl border border-teal-200 shadow-2xl p-1.5 space-y-1 backdrop-blur-md anim-fade-in"
+              >
+                <div className="px-2.5 py-1 border-b border-teal-100 text-[10px] font-mono font-extrabold uppercase tracking-wider text-teal-700 flex items-center justify-between">
+                  <span>{labels.biasLabel}</span>
+                  <span className="text-[9px] text-slate-400 font-normal">
+                    {biasOptions.length} {isSpanish ? "opciones" : "options"}
+                  </span>
+                </div>
+                {biasOptions.map((opt) => {
+                  const isSelected = normalizedBiasKey === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      id={`final-bias-opt-${opt.id}`}
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      onClick={() => {
+                        handleBiasChange(opt.id);
+                        setOpenDropdown(null);
+                      }}
+                      className={`w-full text-left px-2.5 py-2 rounded-lg text-xs transition-all flex items-center justify-between gap-2.5 cursor-pointer ${
+                        isSelected
+                          ? "bg-teal-600 text-white font-bold shadow-xs"
+                          : "text-slate-800 hover:bg-teal-50/80 font-semibold"
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs">{opt.label}</div>
+                        <div
+                          className={`text-[10px] truncate mt-0.5 ${
+                            isSelected ? "text-teal-100" : "text-slate-500"
+                          }`}
+                        >
+                          {opt.sub}
+                        </div>
+                      </div>
+                      {isSelected && (
+                        <CheckIcon className="w-4 h-4 text-white shrink-0" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
