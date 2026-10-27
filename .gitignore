@@ -1,0 +1,19 @@
+# Local build and deployment artifacts
+publish-app/
+app.zip
+
+# Local tooling and operating-system files
+.DS_Store
+Thumbs.db
+.azure/
+
+# Local credentials, caches, and generated state
+*.user
+*.suo
+*.userprefs
+*.log
+*.tmp
+*.cache
+entra-token-cache.json
+speech-resource-id.txt
+

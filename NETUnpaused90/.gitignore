@@ -49,3 +49,7 @@ appsettings*.local.json
 *.crash
 *.tmp
 
+# Local runtime state and generated deployment files
+entra-token-cache.json
+speech-resource-id.txt
+publish-app/
