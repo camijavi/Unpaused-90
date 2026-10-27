@@ -14,10 +14,10 @@ import type {
 
 const CANDIDATE_BASES = [
   import.meta.env.VITE_API_BASE_URL,
+  "", // Primary relative path for production
   "http://localhost:5165",
   "http://127.0.0.1:5165",
   "https://localhost:7190",
-  "", // Relative path fallback
 ].filter((b): b is string => b !== undefined && b !== null);
 
 async function fetchWithFallback(

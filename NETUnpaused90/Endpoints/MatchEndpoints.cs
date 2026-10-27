@@ -17,6 +17,16 @@ public static class MatchEndpoints
         })
         .WithName("GetMatches");
 
+        // GET /api/v1/matches/random - Randomly selects one of the real matches loaded from Azure Blob Storage
+        group.MapGet("/random", async (MatchService matchService, CancellationToken ct) =>
+        {
+            var match = await matchService.GetRandomMatchAsync(ct);
+            return match is not null
+                ? Results.Ok(match)
+                : Results.NotFound(new { error = "No matches available in Azure Blob Storage." });
+        })
+        .WithName("GetRandomMatch");
+
         // GET /api/v1/matches/{matchId} — Time-sliced match state at the current simulated minute (or optional ?minute=)
         group.MapGet("/{matchId}", async (
             string matchId,
