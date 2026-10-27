@@ -49,10 +49,10 @@ export const Cards: React.FC<CardsProps> = ({
   const windowEnd = catchUp?.currentMinute ?? currentMinute;
   const windowStr = `${windowStart}' – ${windowEnd}'`;
 
-  const homeCode = match?.homeTeam.teamId ?? "ARS";
-  const awayCode = match?.awayTeam.teamId ?? "LIV";
-  const homeName = match?.homeTeam.name ?? "Arsenal";
-  const awayName = match?.awayTeam.name ?? "Liverpool";
+  const homeCode = match?.homeTeam?.teamId ?? "";
+  const awayCode = match?.awayTeam?.teamId ?? "";
+  const homeName = match?.homeTeam?.name ?? "Home";
+  const awayName = match?.awayTeam?.name ?? "Away";
 
   // Dynamic possession: extract from catchUp narrative if present, or fallback to live match stats
   const posRegexMatch = catchUp?.momentumChanges.match(
@@ -60,10 +60,10 @@ export const Cards: React.FC<CardsProps> = ({
   );
   const possessionHome = posRegexMatch
     ? parseInt(posRegexMatch[1], 10)
-    : (match?.statistics.possession.home ?? 60);
+    : (match?.statistics?.possession?.home ?? 50);
   const possessionAway = posRegexMatch
     ? parseInt(posRegexMatch[2], 10)
-    : (match?.statistics.possession.away ?? 40);
+    : (match?.statistics?.possession?.away ?? 50);
 
   // Real events occurring strictly within the user's missed window
   const windowEvents = timeline.filter(

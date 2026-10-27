@@ -205,27 +205,27 @@ export const ResponsiveScoreContainer: React.FC<
   const { t } = useLanguage();
 
   const homeTeam = match?.homeTeam ?? {
-    teamId: "ARS",
-    name: "Arsenal",
-    score: 1,
-    formation: "4-3-3",
+    teamId: "",
+    name: "Home",
+    score: 0,
+    formation: "",
   };
   const awayTeam = match?.awayTeam ?? {
-    teamId: "LIV",
-    name: "Liverpool",
-    score: 2,
-    formation: "4-2-3-1",
+    teamId: "",
+    name: "Away",
+    score: 0,
+    formation: "",
   };
 
-  const competition = match?.competition ?? "Premier League";
+  const competition = match?.competition ?? "";
   const round = "WEEK 10"; // Premier League Matchweek indicator
   const isFullTime = currentMinute >= 90 || match?.status === "FullTime";
 
   const homeScore = homeTeam.score ?? 0;
   const awayScore = awayTeam.score ?? 0;
 
-  const possessionHome = match?.statistics?.possession?.home ?? 54;
-  const possessionAway = match?.statistics?.possession?.away ?? 46;
+  const possessionHome = match?.statistics?.possession?.home ?? 50;
+  const possessionAway = match?.statistics?.possession?.away ?? 50;
 
   // Format time pill text (e.g. "83'" or "90' FT" or "HT 45'")
   const timePillText = isFullTime

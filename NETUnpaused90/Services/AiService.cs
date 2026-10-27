@@ -90,7 +90,7 @@ public class AiService
             : "Write all JSON field values in British English (en-GB).";
 
         var prompt = $@"
-A viewer stopped watching at minute {request.LastViewedMinute}' and returned at minute {request.CurrentMinute}'.
+A viewer stopped watching at minute {request.LastViewedMinute} and returned at minute {request.CurrentMinute} (time slice: from minute {request.LastViewedMinute} to minute {request.CurrentMinute}).
 
 {modeGuidelines}
 
@@ -101,14 +101,20 @@ A viewer stopped watching at minute {request.LastViewedMinute}' and returned at 
 VOCAL EMOTION & DELIVERY:
 - Write with genuine vocal emotion, dynamic energy, exclamation marks (!) on big moments, and rhetorical questions (?) so the neural commentator voice rises and falls with real match excitement—never flat or robotic!
 
+TEXT-TO-SPEECH PRONUNCIATION SPECIFICATIONS (MANDATORY):
+- MATCH MINUTES: NEVER use apostrophe shorthand like 90' or 35'! Text-to-speech synthesizers incorrectly pronounce 90' as '90 feet'. In English, always write '90 minutes', 'minute 90', or 'in the 90th minute'. In Spanish, always write 'minuto 90' or '90 minutos'.
+- TIME WINDOWS: Never write ambiguous hyphen ranges like '2 - 3'. Always explicitly write 'from minute 2 to minute 3' (in Spanish: 'del minuto 2 al minuto 3') so the speech engine clearly pronounces it as a time window.
+- FORMATIONS: Tactical formations such as 4-3-3, 4-2-3-1, or 3-5-2 must be clearly designated as tactical formations (e.g. '4-3-3 formation' or 'formación 4-3-3'), never confused with time windows or scores.
+- SCORES: State match scores clearly (e.g. 'two-one', 'three-two', or 'two goals to one'; in Spanish 'dos a uno', 'tres a dos').
+
 LANGUAGE: {languageInstruction}
 
-MATCH DATA SLICE ({request.LastViewedMinute}' to {request.CurrentMinute}'):
-- Match: {match.HomeTeam.Name} ({match.HomeTeam.Formation}, Coach: {match.HomeTeam.Coach}) vs {match.AwayTeam.Name} ({match.AwayTeam.Formation}, Coach: {match.AwayTeam.Coach})
-- Score at Minute {request.CurrentMinute}': {match.HomeTeam.Name} {homeGoalsAtCurrent} - {awayGoalsAtCurrent} {match.AwayTeam.Name}
+MATCH DATA SLICE (from minute {request.LastViewedMinute} to minute {request.CurrentMinute}):
+- Match: {match.HomeTeam.Name} ({match.HomeTeam.Formation} formation, Coach: {match.HomeTeam.Coach}) vs {match.AwayTeam.Name} ({match.AwayTeam.Formation} formation, Coach: {match.AwayTeam.Coach})
+- Score at minute {request.CurrentMinute}: {match.HomeTeam.Name} {homeGoalsAtCurrent} - {awayGoalsAtCurrent} {match.AwayTeam.Name}
 - Statistics: {JsonSerializer.Serialize(match.Statistics)}
-- Events ({request.LastViewedMinute}' to {request.CurrentMinute}'): {JsonSerializer.Serialize(filteredEvents)}
-- Insights ({request.LastViewedMinute}' to {request.CurrentMinute}'): {JsonSerializer.Serialize(filteredInsights)}
+- Events (from minute {request.LastViewedMinute} to minute {request.CurrentMinute}): {JsonSerializer.Serialize(filteredEvents)}
+- Insights (from minute {request.LastViewedMinute} to minute {request.CurrentMinute}): {JsonSerializer.Serialize(filteredInsights)}
 
 Return ONLY a valid JSON object with these exact 4 keys:
 {{
@@ -165,6 +171,15 @@ Return ONLY a valid JSON object with these exact 4 keys:
 
         var parsed = JsonSerializer.Deserialize<CatchUpResponse>(rawContent, _jsonOptions)
             ?? throw new InvalidOperationException("Azure OpenAI returned invalid or empty JSON for catch-up.");
+
+        var isSpanish = string.Equals(langCode, "es", StringComparison.OrdinalIgnoreCase);
+        parsed = parsed with
+        {
+            WhatHappened = SpeechService.NormalizeFootballCommentaryForSpeech(parsed.WhatHappened, isSpanish),
+            WhyItMatters = SpeechService.NormalizeFootballCommentaryForSpeech(parsed.WhyItMatters, isSpanish),
+            MomentumChanges = SpeechService.NormalizeFootballCommentaryForSpeech(parsed.MomentumChanges, isSpanish),
+            WhatToWatchNext = SpeechService.NormalizeFootballCommentaryForSpeech(parsed.WhatToWatchNext, isSpanish)
+        };
 
         var combinedScript = $"{parsed.WhatHappened}\n\n{parsed.WhyItMatters}\n\n{parsed.MomentumChanges}\n\n{parsed.WhatToWatchNext}";
         var (wordCount, estimatedSeconds) = CalculateSpokenMetrics(combinedScript);
@@ -253,6 +268,12 @@ Generate a personalized match recap for {match.HomeTeam.Name} ({match.HomeTeam.S
 VOCAL EMOTION & DELIVERY:
 - Write with dynamic broadcast emotion, exclamation marks (!) on big moments, and rhetorical questions (?) so the neural commentator voice sounds alive and expressive.
 
+TEXT-TO-SPEECH PRONUNCIATION SPECIFICATIONS (MANDATORY):
+- MATCH MINUTES: NEVER write apostrophe shorthand like 90' or 45'! Text-to-speech synthesizers incorrectly pronounce 90' as '90 feet'. In English, always write '90 minutes', 'minute 90', or 'in the 90th minute'. In Spanish, always write 'minuto 90' or '90 minutos'.
+- TIME WINDOWS: Never write ambiguous hyphen ranges like '2 - 3'. Always explicitly write 'from minute 2 to minute 3' (in Spanish: 'del minuto 2 al minuto 3').
+- FORMATIONS: Tactical formations such as 4-3-3, 4-2-3-1, or 3-5-2 must be clearly designated as tactical formations (e.g. '4-3-3 formation' or 'formación 4-3-3'), never confused with time windows or scores.
+- SCORES: State match scores clearly as 'two-one', 'three-two', or 'two goals to one' (in Spanish: 'dos a uno', 'tres a dos').
+
 LANGUAGE: {languageInstruction}
 
 MATCH DATA:
@@ -318,6 +339,9 @@ Return ONLY a valid JSON object with the exact key:
         {
             throw new InvalidOperationException("Azure OpenAI returned an empty story.");
         }
+
+        var isSpanish = string.Equals(langCode, "es", StringComparison.OrdinalIgnoreCase);
+        story = SpeechService.NormalizeFootballCommentaryForSpeech(story, isSpanish);
 
         var (wordCount, estimatedSeconds) = CalculateSpokenMetrics(story);
         var assignedVoice = _speechService.NextAlternatingVoice();
@@ -414,6 +438,11 @@ Explain WHY this specific football event happened and why it matters in {match.H
 
 {biasGuidelines}
 
+TEXT-TO-SPEECH PRONUNCIATION SPECIFICATIONS (MANDATORY):
+- MATCH MINUTES: NEVER write apostrophe shorthand like 90' or 45'! In English, write '90 minutes', 'minute 90', or 'in the 90th minute'. In Spanish, write 'minuto 90' or '90 minutos'.
+- TIME WINDOWS: Never write ambiguous hyphen ranges like '2 - 3'. Always write 'from minute 2 to minute 3' (in Spanish: 'del minuto 2 al minuto 3').
+- FORMATIONS: Tactical formations such as 4-3-3, 4-2-3-1, or 3-5-2 must be clearly designated as tactical formations (e.g. '4-3-3 formation' or 'formación 4-3-3'), never confused with time windows or scores.
+
 LANGUAGE: {languageInstruction}
 
 TARGET EVENT:
@@ -455,6 +484,10 @@ Return ONLY a valid JSON object with the exact keys:
         using var doc = JsonDocument.Parse(completion.Content[0].Text);
         var title = doc.RootElement.TryGetProperty("title", out var t) ? t.GetString() ?? targetEvent.EventType : targetEvent.EventType;
         var explanation = doc.RootElement.TryGetProperty("explanation", out var exp) ? exp.GetString() ?? string.Empty : string.Empty;
+
+        var isSpanish = string.Equals(langCode, "es", StringComparison.OrdinalIgnoreCase);
+        title = SpeechService.NormalizeFootballCommentaryForSpeech(title, isSpanish);
+        explanation = SpeechService.NormalizeFootballCommentaryForSpeech(explanation, isSpanish);
 
         var response = new ExplainEventResponse(
             EventId: targetEvent.EventId,

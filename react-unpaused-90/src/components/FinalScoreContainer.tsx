@@ -53,12 +53,12 @@ export const FinalScoreContainer: React.FC<FinalScoreContainerProps> = ({
   const { t } = useLanguage();
   const [selectedLength, setSelectedLength] = useState<"1m" | "5m" | "full">("full");
 
-  const homeTeamName = match?.homeTeam.name ?? "Arsenal";
-  const awayTeamName = match?.awayTeam.name ?? "Liverpool";
-  const homeScore = match?.homeTeam.score ?? 4;
-  const awayScore = match?.awayTeam.score ?? 3;
-  const homePossession = match?.statistics.possession.home ?? 60;
-  const awayPossession = match?.statistics.possession.away ?? 40;
+  const homeTeamName = match?.homeTeam?.name ?? "Home";
+  const awayTeamName = match?.awayTeam?.name ?? "Away";
+  const homeScore = match?.homeTeam?.score ?? 0;
+  const awayScore = match?.awayTeam?.score ?? 0;
+  const homePossession = match?.statistics?.possession?.home ?? 50;
+  const awayPossession = match?.statistics?.possession?.away ?? 50;
 
   const labels = t.dashboard.finalScoreContainer;
 

@@ -23,9 +23,9 @@ public static class AudioEndpoints
                 return Results.BadRequest(new { error = "Text is required to generate audio." });
             }
 
-            var isSpanish = string.Equals(request.Language?.Trim(), "es-MX", StringComparison.OrdinalIgnoreCase);
-            // string.Equals(request.Language?.Trim(), "es", StringComparison.OrdinalIgnoreCase) ||
-            //                 string.Equals(request.Language?.Trim(), "es-ES", StringComparison.OrdinalIgnoreCase) ||
+            var isSpanish = string.Equals(request.Language?.Trim(), "es", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(request.Language?.Trim(), "es-ES", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(request.Language?.Trim(), "es-MX", StringComparison.OrdinalIgnoreCase);
 
 
             var resolvedVoice = !string.IsNullOrWhiteSpace(request.Voice)

@@ -13,6 +13,7 @@ import { useLanguage } from "../languages/LanguageContext";
 import {
   explainTimelineEvent,
   fetchMatchById,
+  fetchMatches,
   generateCatchUp,
   generatePersonalizedSummary,
   resetMatchSimulation,
@@ -42,108 +43,16 @@ function speakerFromVoice(
   return FEMALE_VOICE_HINTS.some((hint) => v.includes(hint)) ? "Ada" : "Ollie";
 }
 
-const FALLBACK_MATCH: MatchData = {
-  matchId: "PL2027-001",
-  competition: "Premier League",
-  season: "2026/27",
-  stadium: "Emirates Stadium",
-  status: "2nd Half",
-  currentMinute: 60,
-  homeTeam: {
-    teamId: "ARS",
-    name: "Arsenal",
-    coach: "Mikel Arteta",
-    formation: "4-3-3",
-    score: 1,
-    startingXI: [
-      { playerId: "ARS01", name: "David Raya", number: 1, position: "GK", captain: false },
-      { playerId: "ARS02", name: "Ben White", number: 4, position: "RB", captain: false },
-      { playerId: "ARS03", name: "William Saliba", number: 2, position: "CB", captain: false },
-      { playerId: "ARS04", name: "Gabriel Magalhaes", number: 6, position: "CB", captain: false },
-      { playerId: "ARS05", name: "Oleksandr Zinchenko", number: 35, position: "LB", captain: false },
-      { playerId: "ARS06", name: "Declan Rice", number: 41, position: "CM", captain: false },
-      { playerId: "ARS07", name: "Martin Odegaard", number: 8, position: "CM", captain: true },
-      { playerId: "ARS08", name: "Kai Havertz", number: 29, position: "CM", captain: false },
-      { playerId: "ARS09", name: "Bukayo Saka", number: 7, position: "RW", captain: false },
-      { playerId: "ARS10", name: "Gabriel Jesus", number: 9, position: "ST", captain: false },
-      { playerId: "ARS11", name: "Gabriel Martinelli", number: 11, position: "LW", captain: false },
-    ],
-    substitutes: [
-      { playerId: "ARS12", name: "Aaron Ramsdale", number: 32, position: "GK" },
-      { playerId: "ARS13", name: "Jakub Kiwior", number: 15, position: "CB" },
-      { playerId: "ARS14", name: "Jorginho", number: 20, position: "CM" },
-      { playerId: "ARS15", name: "Leandro Trossard", number: 19, position: "LW" },
-      { playerId: "ARS16", name: "Eddie Nketiah", number: 14, position: "ST" },
-    ],
-  },
-  awayTeam: {
-    teamId: "LIV",
-    name: "Liverpool",
-    coach: "Arne Slot",
-    formation: "4-2-3-1",
-    score: 1,
-    startingXI: [
-      { playerId: "LIV01", name: "Alisson Becker", number: 1, position: "GK", captain: false },
-      { playerId: "LIV02", name: "Trent Alexander-Arnold", number: 66, position: "RB", captain: false },
-      { playerId: "LIV03", name: "Ibrahima Konate", number: 5, position: "CB", captain: false },
-      { playerId: "LIV04", name: "Virgil van Dijk", number: 4, position: "CB", captain: true },
-      { playerId: "LIV05", name: "Andrew Robertson", number: 26, position: "LB", captain: false },
-      { playerId: "LIV06", name: "Alexis Mac Allister", number: 10, position: "CM", captain: false },
-      { playerId: "LIV07", name: "Dominik Szoboszlai", number: 8, position: "CM", captain: false },
-      { playerId: "LIV08", name: "Mohamed Salah", number: 11, position: "RW", captain: false },
-      { playerId: "LIV09", name: "Curtis Jones", number: 17, position: "AM", captain: false },
-      { playerId: "LIV10", name: "Luis Diaz", number: 7, position: "LW", captain: false },
-      { playerId: "LIV11", name: "Darwin Nunez", number: 9, position: "ST", captain: false },
-    ],
-    substitutes: [
-      { playerId: "LIV12", name: "Caoimhin Kelleher", number: 62, position: "GK" },
-      { playerId: "LIV13", name: "Joe Gomez", number: 2, position: "CB" },
-      { playerId: "LIV14", name: "Wataru Endo", number: 3, position: "CM" },
-      { playerId: "LIV15", name: "Cody Gakpo", number: 18, position: "FW" },
-      { playerId: "LIV16", name: "Harvey Elliott", number: 19, position: "AM" },
-    ],
-  },
-  statistics: {
-    possession: { home: 54, away: 46 },
-    shots: { home: 9, away: 7 },
-    shotsOnTarget: { home: 4, away: 3 },
-    passAccuracy: { home: 87, away: 84 },
-    corners: { home: 5, away: 3 },
-    fouls: { home: 6, away: 7 },
-  },
-  timeline: [
-    { eventId: "EV001", minute: 12, eventType: "Shot", team: "ARS", player: "Kai Havertz", onTarget: true },
-    { eventId: "EV002", minute: 24, eventType: "PressureSequence", team: "ARS", durationSeconds: 96, importanceScore: 75 },
-    { eventId: "EV003", minute: 31, eventType: "Goal", team: "ARS", player: "Bukayo Saka", assist: "Martin Odegaard", importanceScore: 100 },
-    { eventId: "EV004", minute: 43, eventType: "YellowCard", team: "LIV", player: "Alexis Mac Allister" },
-    { eventId: "EV005", minute: 54, eventType: "Goal", team: "LIV", player: "Mohamed Salah", assist: "Dominik Szoboszlai", importanceScore: 95 },
-  ],
-  generatedInsights: [
-    {
-      minute: 31,
-      type: "GoalImpact",
-      summary: "Arsenal opened the scoring after a sustained spell of pressure in Liverpool's defensive third.",
-      reason: "Odegaard found space between the lines and assisted Saka inside the box.",
-    },
-    {
-      minute: 54,
-      type: "MomentumShift",
-      summary: "Liverpool equalized through a fast transition led by Szoboszlai and Salah.",
-      reason: "Arsenal's high defensive line left space behind Zinchenko.",
-    },
-  ],
-};
-
 function mapBiasToFavoriteTeam(bias: string, match?: MatchData | null): string {
   const normalized = (bias ?? "").toLowerCase();
   if (normalized === "neutral" || normalized === "none" || !normalized) {
     return "Neutral";
   }
   if (normalized === "home" || normalized === "hometeam") {
-    return match?.homeTeam.name ?? "home";
+    return match?.homeTeam?.name ?? "home";
   }
   if (normalized === "away" || normalized === "awayteam") {
-    return match?.awayTeam.name ?? "away";
+    return match?.awayTeam?.name ?? "away";
   }
   if (match?.homeTeam && (normalized.includes(match.homeTeam.name.toLowerCase()) || match.homeTeam.name.toLowerCase().includes(normalized))) {
     return match.homeTeam.name;
@@ -156,16 +65,14 @@ function mapBiasToFavoriteTeam(bias: string, match?: MatchData | null): string {
 
 export const Dashboard: React.FC = () => {
   const { language: globalLanguage, setLanguage: setGlobalLanguage } = useLanguage();
-  const [match, setMatch] = useState<MatchData | null>(FALLBACK_MATCH);
-  const [timeline, setTimeline] = useState<TimelineEvent[]>(FALLBACK_MATCH.timeline);
-  const [insights, setInsights] = useState<GeneratedInsight[]>(
-    FALLBACK_MATCH.generatedInsights
-  );
+  const [match, setMatch] = useState<MatchData | null>(null);
+  const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+  const [insights, setInsights] = useState<GeneratedInsight[]>([]);
   const [initialStartMinute, setInitialStartMinute] = useState<number | null>(null);
   const [subSeconds, setSubSeconds] = useState<number>(0);
 
   // Hero Console state
-  const [stoppedMinute, setStoppedMinute] = useState<number>(30);
+  const [stoppedMinute, setStoppedMinute] = useState<number>(1);
   const [mode, setMode] = useState<"casual" | "analyst" | "child">("casual");
   const [bias, setBias] = useState<string>("neutral");
   const [length, setLength] = useState<"1m" | "5m" | "full">("1m");
@@ -205,9 +112,7 @@ export const Dashboard: React.FC = () => {
   const [statusBadgeText, setStatusBadgeText] = useState<string>(
     "Synced to Live Match Window"
   );
-  const [selectedEvent, setSelectedEvent] = useState<TimelineEvent | null>(
-    FALLBACK_MATCH.timeline[FALLBACK_MATCH.timeline.length - 1] ?? null
-  );
+  const [selectedEvent, setSelectedEvent] = useState<TimelineEvent | null>(null);
   const [eventExplanation, setEventExplanation] = useState<{
     title: string;
     explanation: string;
@@ -278,12 +183,13 @@ export const Dashboard: React.FC = () => {
   const generationIdRef = useRef<number>(0);
   const hasInitializedRef = useRef<boolean>(false);
   const seenEventIdsRef = useRef<Set<string>>(new Set());
-  const prevMinuteRef = useRef<number>(60);
+  const prevMinuteRef = useRef<number>(1);
   const minuteStartTimeRef = useRef<number>(Date.now());
+  const currentMatchIdRef = useRef<string>("");
   const SECONDS_PER_SIMULATED_MINUTE = 30.0;
 
-  const currentMinute = match?.currentMinute ?? 60;
-  const isFullTime = currentMinute >= 90 || match?.status === "FullTime";
+  const currentMinute = match?.currentMinute ?? 1;
+  const isFullTime = (match?.currentMinute ?? 0) >= 90 || match?.status === "FullTime";
 
   // Stops any currently playing audio and revokes old Blob URLs so stale audio never replays
   const stopAndRevokeCurrentAudio = useCallback(() => {
@@ -475,7 +381,7 @@ export const Dashboard: React.FC = () => {
             "hombre",
           ];
 
-      // Neural/online voices sound far more natural than the legacy compact system voices
+      // Neural/online voices sound far more natural than legacy compact system voices
       const qualityScore = (v: SpeechSynthesisVoice) => {
         const n = v.name.toLowerCase();
         let score = 0;
@@ -619,10 +525,10 @@ export const Dashboard: React.FC = () => {
   const handleSelectTimelineEvent = useCallback(
     async (ev: TimelineEvent) => {
       setSelectedEvent(ev);
-      const activeMatchId = match?.matchId ?? "PL2027-001";
-      const homeCode = match?.homeTeam.teamId ?? "ARS";
-      const homeName = match?.homeTeam.name ?? "Arsenal";
-      const awayName = match?.awayTeam.name ?? "Liverpool";
+      const activeMatchId = match?.matchId || currentMatchIdRef.current;
+      const homeCode = match?.homeTeam?.teamId ?? "";
+      const homeName = match?.homeTeam?.name ?? "";
+      const awayName = match?.awayTeam?.name ?? "";
       const currentEffectiveLang = globalLanguage ?? lang;
       const formatted = formatTimelineEventTitle(
         ev,
@@ -679,7 +585,20 @@ export const Dashboard: React.FC = () => {
   // Step 1 & Step 2: Initialize or Reset Match Simulation at a random minute (1..90)
   const handleInitializeOrResetSimulation = useCallback(async () => {
     try {
-      const matchData = await resetMatchSimulation("PL2027-001");
+      let targetId = currentMatchIdRef.current || match?.matchId;
+      if (!targetId) {
+        try {
+          const list = await fetchMatches();
+          if (list && list.length > 0) {
+            targetId = list[0].matchId;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      const matchData = await resetMatchSimulation(targetId);
+      currentMatchIdRef.current = matchData.matchId;
       setMatch(matchData);
       setTimeline(matchData.timeline);
       setInsights(matchData.generatedInsights);
@@ -709,7 +628,7 @@ export const Dashboard: React.FC = () => {
     } catch (err) {
       console.error("Failed to initialize/reset live match simulation:", err);
     }
-  }, []);
+  }, [match?.matchId]);
 
   // Initialize a random starting minute (1..90) on mount
   useEffect(() => {
@@ -741,7 +660,9 @@ export const Dashboard: React.FC = () => {
 
     const pollInterval = window.setInterval(async () => {
       try {
-        const liveMatch = await fetchMatchById("PL2027-001");
+        const targetId = currentMatchIdRef.current || match?.matchId;
+        const liveMatch = await fetchMatchById(targetId);
+        currentMatchIdRef.current = liveMatch.matchId;
         setMatch(liveMatch);
         setTimeline(liveMatch.timeline);
         setInsights(liveMatch.generatedInsights);
@@ -767,9 +688,9 @@ export const Dashboard: React.FC = () => {
           setSelectedEvent(latestNew);
           setEventExplanation(null);
 
-          const homeCode = liveMatch.homeTeam.teamId ?? "ARS";
-          const homeName = liveMatch.homeTeam.name ?? "Arsenal";
-          const awayName = liveMatch.awayTeam.name ?? "Liverpool";
+          const homeCode = liveMatch.homeTeam?.teamId ?? "";
+          const homeName = liveMatch.homeTeam?.name ?? "";
+          const awayName = liveMatch.awayTeam?.name ?? "";
           const info = formatTimelineEventTitle(
             latestNew,
             homeCode,
@@ -792,7 +713,7 @@ export const Dashboard: React.FC = () => {
     }, 2000);
 
     return () => window.clearInterval(pollInterval);
-  }, [handleTriggerAnimation, isFullTime]);
+  }, [handleTriggerAnimation, isFullTime, match?.matchId]);
 
   // Step 6: Generate Full-Time Match Summary (`POST /api/v1/personalized-summary`)
   const handleGenerateFullTimeSummary = useCallback(
@@ -819,7 +740,7 @@ export const Dashboard: React.FC = () => {
         setTranscriptLine("Generating Full-Time 90' Match Summary...");
       }
 
-      const activeMatchId = match?.matchId ?? "PL2027-001";
+      const activeMatchId = match?.matchId || currentMatchIdRef.current;
       const targetLength = summaryLength ?? "full";
       const effectiveLang = langOverride ?? lang;
       const effectiveMode = modeOverride ?? mode;
@@ -982,7 +903,7 @@ export const Dashboard: React.FC = () => {
           : "Generating your live personalized match recap..."
       );
 
-      const activeMatchId = match?.matchId ?? "PL2027-001";
+      const activeMatchId = match?.matchId || currentMatchIdRef.current;
       const targetCurrentMin = match?.currentMinute ?? 90;
       const clampedStopped = Math.min(
         stoppedMinute,
@@ -1291,7 +1212,7 @@ export const Dashboard: React.FC = () => {
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-5 space-y-6">
         <div id="view-dashboard" className="space-y-6">
-          {/* 2. Live Grounds Bar (SVG Ball Icon, Arsenal vs Liverpool + Simulation Reset) */}
+          {/* 2. Live Grounds Bar */}
           <LiveGrounds
             match={match}
             initialStartMinute={initialStartMinute}
@@ -1339,8 +1260,8 @@ export const Dashboard: React.FC = () => {
               bias={bias}
               length={length}
               lang={lang}
-              homeTeamName={match?.homeTeam.name}
-              awayTeamName={match?.awayTeam.name}
+              homeTeamName={match?.homeTeam?.name}
+              awayTeamName={match?.awayTeam?.name}
               isGenerating={isGenerating}
               generatingWindow={generatingWindow}
               onChangeStoppedMinute={setStoppedMinute}
@@ -1359,9 +1280,9 @@ export const Dashboard: React.FC = () => {
                 if (goalEv) {
                   const info = formatTimelineEventTitle(
                     goalEv,
-                    match?.homeTeam.teamId ?? "ARS",
-                    match?.homeTeam.name ?? "Arsenal",
-                    match?.awayTeam.name ?? "Liverpool"
+                    match?.homeTeam?.teamId ?? "",
+                    match?.homeTeam?.name ?? "",
+                    match?.awayTeam?.name ?? ""
                   );
                   handleTriggerAnimation({
                     kind: "goal",
