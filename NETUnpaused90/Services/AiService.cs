@@ -514,15 +514,23 @@ Return ONLY a valid JSON object with the exact keys:
     {
         var isSpanish = string.Equals(request.Language, "es", StringComparison.OrdinalIgnoreCase);
         var favTeam = request.FavoriteTeam ?? "";
-        var isArsenal = favTeam.Contains("Arsenal", StringComparison.OrdinalIgnoreCase);
-        var isLiverpool = favTeam.Contains("Liverpool", StringComparison.OrdinalIgnoreCase);
+        var homeName = match.HomeTeam.Name;
+        var awayName = match.AwayTeam.Name;
+
+        var isHome = !string.IsNullOrWhiteSpace(favTeam) && (
+            favTeam.Equals("home", StringComparison.OrdinalIgnoreCase) ||
+            favTeam.Contains(homeName, StringComparison.OrdinalIgnoreCase) ||
+            homeName.Contains(favTeam, StringComparison.OrdinalIgnoreCase)
+        );
+        var isAway = !string.IsNullOrWhiteSpace(favTeam) && (
+            favTeam.Equals("away", StringComparison.OrdinalIgnoreCase) ||
+            favTeam.Contains(awayName, StringComparison.OrdinalIgnoreCase) ||
+            awayName.Contains(favTeam, StringComparison.OrdinalIgnoreCase)
+        );
         var isChild = string.Equals(request.ViewMode, "child", StringComparison.OrdinalIgnoreCase);
         var isAnalyst = string.Equals(request.ViewMode, "analyst", StringComparison.OrdinalIgnoreCase);
         var is5m = string.Equals(lengthKey, "5m", StringComparison.OrdinalIgnoreCase);
         var isFull = string.Equals(lengthKey, "full", StringComparison.OrdinalIgnoreCase);
-
-        var homeName = match.HomeTeam.Name;
-        var awayName = match.AwayTeam.Name;
 
         var goals = windowEvents.Where(e => e.EventType.Equals("Goal", StringComparison.OrdinalIgnoreCase)).ToList();
         var redCards = windowEvents.Where(e => e.EventType.Equals("RedCard", StringComparison.OrdinalIgnoreCase)).ToList();
@@ -541,7 +549,7 @@ Return ONLY a valid JSON object with the exact keys:
             {
                 // Child - Spanish (es-MX)
                 var p1What = goals.Count > 0
-                    ? $"¡BOOM! ¡Vaya montaña rusa de diversión en el Emirates! Durante los minutos que estuviste fuera ({request.LastViewedMinute}'-{request.CurrentMinute}'), los delanteros estrella lanzaron auténticos cañonazos imparables con goles de {string.Join(" y ", goalDescs)}. El marcador marcha {homeName} {homeGoals} - {awayGoals} {awayName}. ¡Parece una película de superhéroes a máxima velocidad!"
+                    ? $"¡BOOM! ¡Vaya montaña rusa de diversión en {match.Stadium}! Durante los minutos que estuviste fuera ({request.LastViewedMinute}'-{request.CurrentMinute}'), los delanteros estrella lanzaron auténticos cañonazos imparables con goles de {string.Join(" y ", goalDescs)}. El marcador marcha {homeName} {homeGoals} - {awayGoals} {awayName}. ¡Parece una película de superhéroes a máxima velocidad!"
                     : $"¡Los jugadores están corriendo como auténticos bólidos por toda la cancha! Entre el minuto {request.LastViewedMinute}' y el {request.CurrentMinute}', el balón no ha parado de rodar con el marcador en {homeName} {homeGoals} - {awayGoals} {awayName}. ¡Ambos equipos defienden su portería como una fortaleza mágica!";
 
                 if (redCards.Count > 0)
@@ -599,11 +607,11 @@ Return ONLY a valid JSON object with the exact keys:
             {
                 // Casual Fan - Spanish (es-MX)
                 var p1What = goals.Count > 0
-                    ? isArsenal
-                        ? $"¡Emociones al límite en el Emirates! Durante los minutos que estuviste fuera ({request.LastViewedMinute}'-{request.CurrentMinute}'), el marcador se sacudió con anotaciones de {string.Join(" y ", goalDescs)}. El marcador actual se sitúa en {homeName} {homeGoals} - {awayGoals} {awayName}. ¡Cada minuto es una auténtica batalla en el terreno de juego!"
-                        : isLiverpool
-                            ? $"¡Intensidad pura en la cancha! Los Reds vivieron momentos electrizantes con goles de {string.Join(" y ", goalDescs)}. El partido marcha {homeName} {homeGoals} - {awayGoals} {awayName} en una exhibición de coraje y pegada rápida."
-                            : $"¡Minutos frenéticos en Londres! Entre el minuto {request.LastViewedMinute}' y el {request.CurrentMinute}', cayeron goles cruciales de {string.Join(" y ", goalDescs)}. El marcador registra {homeName} {homeGoals} - {awayGoals} {awayName}."
+                    ? isHome
+                        ? $"¡Emociones al límite en {match.Stadium}! Durante los minutos que estuviste fuera ({request.LastViewedMinute}'-{request.CurrentMinute}'), {homeName} empujó con fuerza en un duelo vibrante con anotaciones de {string.Join(" y ", goalDescs)}. El marcador actual se sitúa en {homeName} {homeGoals} - {awayGoals} {awayName}. ¡Cada minuto es una auténtica batalla en el terreno de juego!"
+                        : isAway
+                            ? $"¡Intensidad pura en la cancha! {awayName} vivió momentos electrizantes con goles de {string.Join(" y ", goalDescs)}. El partido marcha {homeName} {homeGoals} - {awayGoals} {awayName} en una exhibición de coraje y pegada rápida frente a {homeName}."
+                            : $"¡Minutos frenéticos en {match.Stadium}! Entre el minuto {request.LastViewedMinute}' y el {request.CurrentMinute}', cayeron goles cruciales de {string.Join(" y ", goalDescs)}. El marcador registra {homeName} {homeGoals} - {awayGoals} {awayName}."
                     : $"Entre el minuto {request.LastViewedMinute}' y el {request.CurrentMinute}', se vivió una intensa pugna táctica en el centro del campo con el marcador en {homeName} {homeGoals} - {awayGoals} {awayName}. Ambos equipos ajustaron sus líneas defensivas para evitar transiciones de peligro.";
 
                 if (redCards.Count > 0)
@@ -614,9 +622,9 @@ Return ONLY a valid JSON object with the exact keys:
 
                 whatHappenedParas.Add(p1What);
                 whatHappenedParas.Add("El ritmo no dio un solo respiro: intervenciones milagrosas bajo los tres palos, choques intensos en la medular y una grada que ruge en cada llegada de peligro. Los futbolistas están entregando el alma en cada pelota dividida en un duelo que mantiene los nervios a flor de piel.");
-                whatHappenedParas.Add("La atmósfera en el estadio es digna de una noche histórica de Premier League. Cada decisión arbitral desata la protesta de los banquillos, y la sensación general es que cualquier descuido defensivo puede cambiar el destino del cotejo en un abrir y cerrar de ojos.");
+                whatHappenedParas.Add("La atmósfera en el estadio es digna de una noche histórica de fútbol. Cada decisión arbitral desata la protesta de los banquillos, y la sensación general es que cualquier descuido defensivo puede cambiar el destino del cotejo en un abrir y cerrar de ojos.");
 
-                whyItMattersParas.Add($"Un punto de inflexión decisivo en el Emirates Stadium. El duelo estratégico entre {match.HomeTeam.Coach} y {match.AwayTeam.Coach} se intensifica, abriendo espacios determinantes para el desenlace del encuentro.");
+                whyItMattersParas.Add($"Un punto de inflexión decisivo en {match.Stadium}. El duelo estratégico entre {match.HomeTeam.Coach} y {match.AwayTeam.Coach} se intensifica, abriendo espacios determinantes para el desenlace del encuentro.");
                 whyItMattersParas.Add("Tres puntos de oro en juego con repercusiones colosales en la clasificación de la Premier League. La presión sobre los jugadores es asfixiante, y la capacidad de mantener la serenidad en los momentos de mayor agobio definirá al ganador de esta contienda.");
                 whyItMattersParas.Add("El impacto psicológico de este marcador parcial se hace sentir en cada rincón del césped: la escuadra que va arriba gana aplomo y confianza, mientras que el adversario redobla esfuerzos con un fútbol directo y agresivo buscando la remontada.");
 
@@ -667,7 +675,7 @@ Return ONLY a valid JSON object with the exact keys:
             {
                 // Analyst - English
                 var p1What = goals.Count > 0
-                    ? $"Tactical breakdown of the {request.LastViewedMinute}'-{request.CurrentMinute}' match phase: Arteta's {match.HomeTeam.Formation} in-possession build-up systematically overloaded the half-spaces and Zone 14, exploiting transitional space to register breakthroughs ({string.Join(" and ", goalDescs)}) and establish a {homeName} {homeGoals} - {awayGoals} {awayName} scoreline against Slot's {match.AwayTeam.Formation} defensive block."
+                    ? $"Tactical breakdown of the {request.LastViewedMinute}'-{request.CurrentMinute}' match phase: {match.HomeTeam.Coach}'s {match.HomeTeam.Formation} in-possession build-up systematically overloaded the half-spaces and Zone 14, exploiting transitional space to register breakthroughs ({string.Join(" and ", goalDescs)}) and establish a {homeName} {homeGoals} - {awayGoals} {awayName} scoreline against {match.AwayTeam.Coach}'s {match.AwayTeam.Formation} defensive block."
                     : $"Phase of tactical chess between minutes {request.LastViewedMinute}' and {request.CurrentMinute}'. The in-possession structure focused on pinning opposition centre-backs to release free men between the lines, while the defensive unit compressed central passing lanes with the score holding at {homeName} {homeGoals} – {awayGoals} {awayName}.";
 
                 if (redCards.Count > 0)
@@ -696,11 +704,11 @@ Return ONLY a valid JSON object with the exact keys:
             {
                 // Casual Fan - English
                 var p1What = goals.Count > 0
-                    ? isArsenal
-                        ? $"Electric drama in North London! While you stepped away ({request.LastViewedMinute}'-{request.CurrentMinute}'), the Emirates erupted as {string.Join(" and ", goalDescs)}. The scoreline stands at {homeName} {homeGoals} - {awayGoals} {awayName} in a breathtaking contest!"
-                        : isLiverpool
-                            ? $"Incredible scenes on the pitch! The Reds delivered thunderous moments with goals from {string.Join(" and ", goalDescs)}, putting the score at {homeName} {homeGoals} - {awayGoals} {awayName}!"
-                            : $"Sensational Premier League action between {request.LastViewedMinute}' and {request.CurrentMinute}'! Goals flew in courtesy of {string.Join(" and ", goalDescs)}, taking the score to {homeName} {homeGoals} - {awayGoals} {awayName}."
+                    ? isHome
+                        ? $"Electric drama at {match.Stadium}! While you stepped away ({request.LastViewedMinute}'-{request.CurrentMinute}'), {homeName} surged forward as {string.Join(" and ", goalDescs)}. The scoreline stands at {homeName} {homeGoals} - {awayGoals} {awayName} in a breathtaking contest against {awayName}!"
+                        : isAway
+                            ? $"Incredible scenes on the pitch! {awayName} delivered thunderous moments with goals from {string.Join(" and ", goalDescs)}, putting the score at {homeName} {homeGoals} - {awayGoals} {awayName} against {homeName}!"
+                            : $"Sensational action between {request.LastViewedMinute}' and {request.CurrentMinute}'! Goals flew in courtesy of {string.Join(" and ", goalDescs)}, taking the score to {homeName} {homeGoals} - {awayGoals} {awayName}."
                     : $"Between minutes {request.LastViewedMinute}' and {request.CurrentMinute}', an engrossing tactical battle took place in midfield with the score holding at {homeName} {homeGoals} - {awayGoals} {awayName}.";
 
                 if (redCards.Count > 0)
@@ -710,12 +718,12 @@ Return ONLY a valid JSON object with the exact keys:
                 }
 
                 whatHappenedParas.Add(p1What);
-                whatHappenedParas.Add("The pace has been relentless from end to end: heroic saves between the posts, crunching tackles in midfield, and a roar from the stands that reverberates across North London! Neither side is giving an inch as both managers gesticulate furiously on the touchline, demanding maximum concentration and relentless pressing intensity from their players.");
+                whatHappenedParas.Add($"The pace has been relentless from end to end: heroic saves between the posts, crunching tackles in midfield, and a roar from the stands at {match.Stadium}! Neither side is giving an inch as both managers gesticulate furiously on the touchline, demanding maximum concentration and relentless pressing intensity from their players.");
                 whatHappenedParas.Add("Every loose ball is contested with ferocious intensity as the atmosphere reaches fever pitch under the stadium lights. Touchline instructions are flying thick and fast from both benches, with every single supporter sensing that one moment of individual brilliance or one costly defensive lapse will define this Premier League blockbuster.");
 
                 whyItMattersParas.Add(windowInsights.Count > 0
                     ? $"{windowInsights[0].Summary} {windowInsights[0].Reason}"
-                    : $"The tactical duel between Arteta's {match.HomeTeam.Formation} and Slot's {match.AwayTeam.Formation} hinges on half-space territorial dominance and aggressive counter-pressing triggers.");
+                    : $"The tactical duel between {match.HomeTeam.Coach}'s {match.HomeTeam.Formation} and {match.AwayTeam.Coach}'s {match.AwayTeam.Formation} hinges on half-space territorial dominance and aggressive counter-pressing triggers.");
                 whyItMattersParas.Add("Massive ramifications in the Premier League standings hinge on this very fixture. The psychological momentum generated by this scoreline will reverberate throughout the dressing rooms and carry immense weight into the title race, forcing both managers to reconsider their tactical risk tolerance.");
                 whyItMattersParas.Add("The emotional temperature is off the charts. The side in the ascendancy is feeding on the crowd's energy to press forward, while the opposition must summon immense mental fortitude to weather the storm, regroup their defensive lines, and launch direct counter-attacking responses.");
 
@@ -766,17 +774,17 @@ Return ONLY a valid JSON object with the exact keys:
     {
         var isSpanish = string.Equals(request.Language, "es", StringComparison.OrdinalIgnoreCase);
         var favTeam = request.FavoriteTeam ?? "";
-        var isArsenal = favTeam.Contains("Arsenal", StringComparison.OrdinalIgnoreCase);
-        var isLiverpool = favTeam.Contains("Liverpool", StringComparison.OrdinalIgnoreCase);
-        var isChild = string.Equals(request.Mode, "child", StringComparison.OrdinalIgnoreCase);
-        var isAnalyst = string.Equals(request.Mode, "analyst", StringComparison.OrdinalIgnoreCase);
-        var is5m = string.Equals(lengthKey, "5m", StringComparison.OrdinalIgnoreCase);
-        var isFull = string.Equals(lengthKey, "full", StringComparison.OrdinalIgnoreCase);
-
         var homeName = match.HomeTeam.Name;
         var awayName = match.AwayTeam.Name;
         var homeScore = match.HomeTeam.Score;
         var awayScore = match.AwayTeam.Score;
+
+        var isHome = favTeam.Contains(homeName, StringComparison.OrdinalIgnoreCase) || favTeam.Equals("home", StringComparison.OrdinalIgnoreCase);
+        var isAway = favTeam.Contains(awayName, StringComparison.OrdinalIgnoreCase) || favTeam.Equals("away", StringComparison.OrdinalIgnoreCase);
+        var isChild = string.Equals(request.Mode, "child", StringComparison.OrdinalIgnoreCase);
+        var isAnalyst = string.Equals(request.Mode, "analyst", StringComparison.OrdinalIgnoreCase);
+        var is5m = string.Equals(lengthKey, "5m", StringComparison.OrdinalIgnoreCase);
+        var isFull = string.Equals(lengthKey, "full", StringComparison.OrdinalIgnoreCase);
 
         var paras = new List<string>();
 
@@ -784,7 +792,7 @@ Return ONLY a valid JSON object with the exact keys:
         {
             if (isChild)
             {
-                paras.Add($"¡SANTO CIELO! ¡Qué 90 minutos de pura magia y diversión futbolística en Londres! Los atacantes lanzaron auténticos rayos láser teledirigidos, los arqueros volaron como superhéroes de cómic y el silbatazo final decretó un épico {homeName} {homeScore} - {awayScore} {awayName}. ¡Un espectáculo para el recuerdo donde ambos equipos dejaron el alma y los fanáticos no pararon de saltar y cantar en las gradas con una alegría desbordante que contagió a todos los presentes!");
+                paras.Add($"¡SANTO CIELO! ¡Qué 90 minutos de pura magia y diversión futbolística en {match.Stadium}! Los atacantes lanzaron auténticos rayos láser teledirigidos, los arqueros volaron como superhéroes de cómic y el silbatazo final decretó un épico {homeName} {homeScore} - {awayScore} {awayName}. ¡Un espectáculo para el recuerdo donde ambos equipos dejaron el alma y los fanáticos no pararon de saltar y cantar en las gradas con una alegría desbordante que contagió a todos los presentes!");
                 paras.Add("Desde el pitido inicial, el césped parecía una pista de carreras supersónica: los delanteros corrían como guepardos con turbos en los botines, esquivando rivales con regates mágicos y gambetas increíbles que levantaron de sus asientos a miles de familias. Cada pase filtrado llevaba veneno y emoción pura, haciendo que los defensas tuvieran que transformarse en auténticos escudos de acero para bloquear cañonazos que buscaban las esquinas de la portería a una velocidad que desafiaba la gravedad misma.");
                 paras.Add("¡Y qué actuación tan legendaria la de los guardametas bajo los tres palos! Con reflejos felinos y alas invisibles, volaron de poste a poste para desviar remates a quemarropa que ya toda la tribuna estaba cantando como gol. Los capitanes no paraban de chocar las palmas con sus compañeros para animarlos a seguir corriendo sin miedo, mientras los banquillos vivían cada segundo con la emoción de una final galáctica donde cada pelota dividida parecía valer un trofeo de oro.");
                 paras.Add("La segunda mitad fue una montaña rusa todavía más electrizante: los directores técnicos saltaban al borde del área técnica gritando instrucciones a viva voz, y las piernas frescas de los suplentes entraron a la cancha listas para revolucionar el partido. Cada saque de esquina se convirtió en una lluvia de adrenalina con balones rebotando como pelotas de pinball frente a las redes contrarias, desatando el delirio en las gradas con cada salvada milagrosa.");
@@ -793,7 +801,7 @@ Return ONLY a valid JSON object with the exact keys:
             }
             else if (isAnalyst)
             {
-                paras.Add($"Análisis táctico exhaustivo de los 90 minutos: el esquema {match.HomeTeam.Formation} de Arteta frente al {match.AwayTeam.Formation} de Slot ofreció una cátedra de ocupación espacial, gestión de rest-defense y contrapresión tras pérdida. El {homeName} {homeScore} - {awayScore} {awayName} definitivo se cimentó en la superioridad numérica en pasillos interiores, la neutralización de transiciones y ajustes posicionales de alto impacto entre las líneas del bloque rival durante todas las fases de juego.");
+                paras.Add($"Análisis táctico exhaustivo de los 90 minutos: el esquema {match.HomeTeam.Formation} de {match.HomeTeam.Coach} frente al {match.AwayTeam.Formation} de {match.AwayTeam.Coach} ofreció una cátedra de ocupación espacial, gestión de rest-defense y contrapresión tras pérdida. El {homeName} {homeScore} - {awayScore} {awayName} definitivo se cimentó en la superioridad numérica en pasillos interiores, la neutralización de transiciones y ajustes posicionales de alto impacto entre las líneas del bloque rival durante todas las fases de juego.");
                 paras.Add("En la fase inicial de iniciación, la salida lavolpiana con el pivote defensivo incrustado entre centrales generó superioridad 3v2 en el primer escalón, obligando al bloque rival a modificar sus alturas de presión y desproteger la zona 14 entre líneas intermedias. Esta disposición facilitó la atracción de la primera línea de acoso para conectar con envíos tensos hacia los receptores entre líneas con ventaja posicional clara y tiempo suficiente para girar hacia la portería rival.");
                 paras.Add("La ocupación asimétrica de los medios espacios permitió fijar a los laterales contrarios en máxima amplitud, mientras las rupturas interiores del mediapunta generaron desajustes severos en la basculación zonal defensiva de la zaga rival. La sincronización de los desmarques de apoyo atrajo a los centrales fuera de zona, liberando carriles de penetración directa para los extremos que atacaron el intervalo central con velocidad sostenida.");
                 paras.Add("En el periodo complementario, la respuesta táctica desde el banquillo introdujo extremos de perfil asociativo para sobrecargar el sector débil, incrementando el volumen de centros tensos hacia el segundo palo y elevando el valor esperado de gol acumulado de forma sistemática. Los ajustes en el triángulo medular permitieron recuperar segundas jugadas en el rebote, sosteniendo una inclinación de cancha superior al 65% en campo rival.");
@@ -803,12 +811,12 @@ Return ONLY a valid JSON object with the exact keys:
             else
             {
                 // Casual
-                paras.Add(isArsenal
-                    ? $"¡Una noche inolvidable en el Emirates Stadium! Arsenal superó un desafío colosal en un partidazo épico frente a Liverpool, finalizando con un memorable {homeName} {homeScore} - {awayScore} {awayName}. Los pupilos de Arteta mostraron personalidad, garra y una pegada clínica para asegurar los tres puntos ante una afición completamente entregada que celebró cada jugada con el corazón en la mano y el rugido ensordecedor de las tribunas londinenses."
-                    : isLiverpool
-                        ? $"Batalla de titanes en Londres. Liverpool dejó el alma en la cancha con un despliegue electrizante en ataque, cerrando el marcador en {homeName} {homeScore} - {awayScore} {awayName}. Los Reds exhibieron valentía, transiciones vertiginosas y un coraje inquebrantable que mantuvieron en vilo a todo el estadio hasta el último suspiro del encuentro, dejando una huella imborrable de fútbol directo y apasionado."
-                        : $"Un clásico contemporáneo de la Premier League. {homeName} y {awayName} protagonizaron noventa minutos de altísimo voltaje táctico y emocional, cerrando la contienda con un {homeScore}-{awayScore} para los libros de historia que encumbró la grandeza del balompié británico ante los ojos del mundo entero.");
-                paras.Add("Desde el silbatazo inicial, la atmósfera en el Emirates Stadium era de auténtica noche europea de gala. Cánticos ensordecedores bajaban desde las cuatro tribunas mientras los futbolistas se batían en duelos de pierna fuerte en el centro del campo a un ritmo vertiginoso que no dio un solo segundo de respiro a los espectadores. El conjunto local buscó imponer condiciones con una presión asfixiante sobre la salida rival, mientras los visitantes respondían con veloces desdoblamientos por las bandas que encendieron las alarmas en el área contraria y generaron ocasiones de gol trepidantes.");
+                paras.Add(isHome
+                    ? $"¡Una noche inolvidable en {match.Stadium}! {homeName} superó un desafío colosal en un partidazo épico frente a {awayName}, finalizando con un memorable {homeName} {homeScore} - {awayScore} {awayName}. Los pupilos de {match.HomeTeam.Coach} mostraron personalidad, garra y una pegada clínica para asegurar el resultado ante una afición completamente entregada que celebró cada jugada con el corazón en la mano y el rugido ensordecedor de las tribunas."
+                    : isAway
+                        ? $"Batalla de titanes en {match.Stadium}. {awayName} dejó el alma en la cancha con un despliegue electrizante en ataque frente a {homeName}, cerrando el marcador en {homeName} {homeScore} - {awayScore} {awayName}. El conjunto de {match.AwayTeam.Coach} exhibió valentía, transiciones vertiginosas y un coraje inquebrantable que mantuvieron en vilo a todo el estadio hasta el último suspiro del encuentro, dejando una huella imborrable de fútbol directo y apasionado."
+                        : $"Un clásico contemporáneo de la Premier League en {match.Stadium}. {homeName} y {awayName} protagonizaron noventa minutos de altísimo voltaje táctico y emocional, cerrando la contienda con un {homeScore}-{awayScore} para los libros de historia que encumbró la grandeza del balompié británico ante los ojos del mundo entero.");
+                paras.Add($"Desde el silbatazo inicial, la atmósfera en {match.Stadium} era de auténtica noche de gala. Cánticos ensordecedores bajaban desde las cuatro tribunas mientras los futbolistas se batían en duelos de pierna fuerte en el centro del campo a un ritmo vertiginoso que no dio un solo segundo de respiro a los espectadores. El conjunto local buscó imponer condiciones con una presión asfixiante sobre la salida rival, mientras los visitantes respondían con veloces desdoblamientos por las bandas que encendieron las alarmas en el área contraria y generaron ocasiones de gol trepidantes.");
                 paras.Add("Los momentos de mayor drama se desataron con llegadas fulgurantes a ambas porterías que mantuvieron al público al borde del asiento durante toda la primera mitad. Disparos venenosos que estremecieron el poste, intervenciones providenciales de los guardametas en el mano a mano y cruces defensivos salvadores sobre la línea de gol levantaron a miles de fanáticos en una montaña rusa de euforia y suspiros contenidos. Cada balón dividido era disputado como si fuera el último de la temporada entera.");
                 paras.Add("En el periodo complementario, el encuentro se abrió por completo con ambos conjuntos volcados al frente sin especulaciones tácticas. Los directores técnicos movieron sus banquillos para inyectar frescura, piernas veloces y desequilibrio individual en el último tercio, transformando la medular en una pista de aterrizaje rápida donde los mediocampistas creativos filtraban balones milimétricos a la espalda de los centrales fatigados por el tremendo desgaste físico desplegado.");
                 paras.Add("El tramo final fue un auténtico asedio de emociones puras que reflejó la esencia indomable del fútbol inglés. Bloques defensivos desesperados, rechaces milagrosos en el área chica y una marea humana en las gradas que empujaba con el alma cada despeje hacia campo rival. Los jugadores lucharon contra los calambres y la fatiga muscular acumulada, entregando hasta la última gota de sudor en defensa del orgullo de su camiseta y sus colores sagrados.");
@@ -821,7 +829,7 @@ Return ONLY a valid JSON object with the exact keys:
             if (isChild)
             {
                 paras.Add($"HOLY GUACAMOLE! What an absolute rollercoaster of soccer magic! Strikers blasted rocket shots into the top corners, defenders built giant superhero shield walls, and the final whistle confirmed a jaw-dropping {homeName} {homeScore} - {awayScore} {awayName} thriller! Every single fan was dancing, singing, and cheering at the top of their lungs across all four corners of the ground!");
-                paras.Add("Right from the opening whistle, the Emirates turf turned into a supersonic racetrack: superstar attackers zoomed past defenders like cheetahs on turbo boosters, unleashing thunderous strikes that rattled the crossbar and had the whole stadium gasping in amazement! Every pass was zipping across the grass like lightning bolts, keeping everybody glued to the edge of their seats!");
+                paras.Add($"Right from the opening whistle, the turf at {match.Stadium} turned into a supersonic racetrack: superstar attackers zoomed past defenders like cheetahs on turbo boosters, unleashing thunderous strikes that rattled the crossbar and had the whole stadium gasping in amazement! Every pass was zipping across the grass like lightning bolts, keeping everybody glued to the edge of their seats!");
                 paras.Add("And what about those superhero goalkeepers! They sprouted imaginary wings and flew from post to post, pulling off mind-boggling fingertip saves that looked like special effects straight out of an action movie to deny certain goals! The team captains high-fived their teammates after every heroic block, giving everyone giant smiles and double energy to keep running at full speed!");
                 paras.Add("The second half was an even wilder carnival of fun: managers bouncing up and down the touchline like jumping jacks, and super-fast substitutes sprinting onto the grass ready to write their names into soccer folklore with every touch of the ball! Every corner kick felt like a popcorn machine exploding in front of goal with leaping headers, flying boots, and miraculous goal-line clearances!");
                 paras.Add("In the final ten nail-biting minutes, the ball rocketed back and forth like a supersonic pinball game! Kids in the crowd were jumping with pure joy and biting their fingernails with excitement, watching defenders dive courageously across the wet grass to shield their net and protect the lead until the referee blew the whistle!");
@@ -829,7 +837,7 @@ Return ONLY a valid JSON object with the exact keys:
             }
             else if (isAnalyst)
             {
-                paras.Add($"A comprehensive 90-minute tactical review: Arteta's {match.HomeTeam.Formation} structure confronted Slot's {match.AwayTeam.Formation} in a masterclass of structural spacing, rest-defense management, and transitional counter-pressing. The final {homeName} {homeScore} - {awayScore} {awayName} result hinged on half-space overloads, Zone 14 exploitation, and decisive tactical adjustments executed under high-pressure competitive duress across both halves.");
+                paras.Add($"A comprehensive 90-minute tactical review: {match.HomeTeam.Coach}'s {match.HomeTeam.Formation} structure confronted {match.AwayTeam.Coach}'s {match.AwayTeam.Formation} in a masterclass of structural spacing, rest-defense management, and transitional counter-pressing. The final {homeName} {homeScore} - {awayScore} {awayName} result hinged on half-space overloads, Zone 14 exploitation, and decisive tactical adjustments executed under high-pressure competitive duress across both halves.");
                 paras.Add("In the first build-up phase, the dropping pivot created situational 3v2 superiorities, baiting the high pressing triggers and disarticulating the opposition's mid-block horizontal compacting mechanisms. This positional manipulation granted interior midfielders central receiving angles with spatial separation, allowing clean progressive distribution into the attacking third under minimal immediate pressure.");
                 paras.Add("Half-space underlaps by advancing central midfielders consistently isolated opposing full-backs, establishing numerical overloads that facilitated clinical cutbacks into high-threat central shooting locations across the penalty area. The timing of third-man combination runs repeatedly pulled central defenders out of optimal alignment, leaving vacated channels for oncoming secondary runners.");
                 paras.Add("The second half tactical recalibration saw adjustments to pressing triggers: defensive recovery lines dropped deeper into an ultra-disciplined 5-3-1 resting shape to absorb vertical directness, deny crossing corridors, and protect central passing lanes. Bench rotations introduced dynamic wide ball-progressors who stretched opposition rest-defense spacing and forced emergency transitional shifts.");
@@ -839,10 +847,10 @@ Return ONLY a valid JSON object with the exact keys:
             else
             {
                 // Casual
-                paras.Add(isArsenal
-                    ? $"An unforgettable spectacle at the Emirates Stadium! Arsenal triumphed in a pulsating Premier League classic against Liverpool, sealing a dramatic {homeName} {homeScore} - {awayScore} {awayName} victory. Mikel Arteta's tactical courage and clinical execution in the decisive moments sent the home supporters into absolute raptures as the final whistle blew over a jubilant north London faithful."
-                    : isLiverpool
-                        ? $"A monumental Premier League battle at the Emirates. Liverpool gave everything in an end-to-end clash, with the final whistle confirming a {homeName} {homeScore} - {awayScore} {awayName} scoreline. The Reds showcased lethal transition speed and relentless fighting spirit that kept the entire stadium enthralled until the final second, demonstrating unmatched character under intense pressure."
+                paras.Add(isHome
+                    ? $"An unforgettable spectacle at {match.Stadium}! {homeName} delivered in a pulsating Premier League classic against {awayName}, sealing a dramatic {homeName} {homeScore} - {awayScore} {awayName} finish. {match.HomeTeam.Coach}'s tactical courage and clinical execution in the decisive moments sent the home supporters into raptures as the final whistle blew."
+                    : isAway
+                        ? $"A monumental Premier League battle at {match.Stadium}! {awayName} gave everything in an end-to-end clash with {homeName}, closing the encounter at {homeName} {homeScore} - {awayScore} {awayName}. The squad led by {match.AwayTeam.Coach} showcased lethal transition speed and relentless fighting spirit that kept the entire ground enthralled until the final second."
                         : $"A Premier League masterclass of drama, tempo, and tactical evolution. {homeName} and {awayName} produced ninety minutes of peerless footballing entertainment, finishing {homeScore}-{awayScore} in a match for the ages that captivated supporters across the globe with its unrelenting quality.");
                 paras.Add("From the very first whistle, the atmosphere crackled with the electric intensity of a Premier League title decider. Thunderous challenges echoed across the middle third, spine-tingling chants rolled down from all four corners of the ground, and a breathtaking pace seized both sets of players. The home side surged forward with ferocious conviction, hunting early openings along the channels, while the visitors absorbed the initial barrage with disciplined positioning and lightning-fast transitional threat.");
                 paras.Add("The drama escalated through magnificent passages of end-to-end attacking football that had spectators on the edge of their seats throughout the first half. Heroic fingertip interventions by the goalkeepers turned certain goals around the woodwork, while bone-crunching duels in central midfield kept the referee on high alert. Every turnover in possession triggered an explosive counter-attack, forcing both defensive backlines to execute desperate recovery sprints under immense physical and psychological duress.");
@@ -1102,10 +1110,12 @@ Return ONLY a valid JSON object with the exact keys:
             );
         }
 
-        var isHome = favoriteTeam.Contains(homeName, StringComparison.OrdinalIgnoreCase) ||
+        var isHome = favoriteTeam.Equals("home", StringComparison.OrdinalIgnoreCase) ||
+                     favoriteTeam.Contains(homeName, StringComparison.OrdinalIgnoreCase) ||
                      homeName.Contains(favoriteTeam, StringComparison.OrdinalIgnoreCase);
 
-        var isAway = favoriteTeam.Contains(awayName, StringComparison.OrdinalIgnoreCase) ||
+        var isAway = favoriteTeam.Equals("away", StringComparison.OrdinalIgnoreCase) ||
+                     favoriteTeam.Contains(awayName, StringComparison.OrdinalIgnoreCase) ||
                      awayName.Contains(favoriteTeam, StringComparison.OrdinalIgnoreCase);
 
         if (!isHome && !isAway)

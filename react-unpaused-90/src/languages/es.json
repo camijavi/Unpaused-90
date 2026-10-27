@@ -220,7 +220,11 @@
         "1m": "1m Rápido",
         "5m": "5m Profundo",
         "full": "Partido Completo (500+ pal.)"
-      }
+      },
+      "filterReminder": "Elige una Persona de Transmisión y un Enfoque de Apoyo para adaptar la crónica final a tu perspectiva.",
+      "filterReminderShort": "Elige tu Persona y Enfoque de Apoyo para personalizar la crónica final.",
+      "personaLabel": "Persona",
+      "biasLabel": "Enfoque"
     },
     "fullTimeDeck": {
       "badge": "INFORME OFICIAL DE TIEMPO COMPLETO",

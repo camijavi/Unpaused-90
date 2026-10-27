@@ -220,7 +220,11 @@
         "1m": "1m Flash",
         "5m": "5m Deep",
         "full": "Full Match (500w+)"
-      }
+      },
+      "filterReminder": "Select a Broadcast Persona and Support Bias to tailor the 90-minute final summary to your perspective.",
+      "filterReminderShort": "Select your Broadcast Persona & Support Bias to customize the final summary.",
+      "personaLabel": "Persona",
+      "biasLabel": "Bias"
     },
     "fullTimeDeck": {
       "badge": "FULL-TIME OFFICIAL MATCH REPORT",

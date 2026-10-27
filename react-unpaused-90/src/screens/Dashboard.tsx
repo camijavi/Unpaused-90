@@ -134,10 +134,24 @@ const FALLBACK_MATCH: MatchData = {
   ],
 };
 
-function mapBiasToFavoriteTeam(bias: "neutral" | "arsenal" | "liverpool"): string {
-  if (bias === "arsenal") return "Arsenal";
-  if (bias === "liverpool") return "Liverpool";
-  return "Neutral";
+function mapBiasToFavoriteTeam(bias: string, match?: MatchData | null): string {
+  const normalized = (bias ?? "").toLowerCase();
+  if (normalized === "neutral" || normalized === "none" || !normalized) {
+    return "Neutral";
+  }
+  if (normalized === "home" || normalized === "hometeam") {
+    return match?.homeTeam.name ?? "home";
+  }
+  if (normalized === "away" || normalized === "awayteam") {
+    return match?.awayTeam.name ?? "away";
+  }
+  if (match?.homeTeam && (normalized.includes(match.homeTeam.name.toLowerCase()) || match.homeTeam.name.toLowerCase().includes(normalized))) {
+    return match.homeTeam.name;
+  }
+  if (match?.awayTeam && (normalized.includes(match.awayTeam.name.toLowerCase()) || match.awayTeam.name.toLowerCase().includes(normalized))) {
+    return match.awayTeam.name;
+  }
+  return bias;
 }
 
 export const Dashboard: React.FC = () => {
@@ -153,7 +167,7 @@ export const Dashboard: React.FC = () => {
   // Hero Console state
   const [stoppedMinute, setStoppedMinute] = useState<number>(30);
   const [mode, setMode] = useState<"casual" | "analyst" | "child">("casual");
-  const [bias, setBias] = useState<"neutral" | "arsenal" | "liverpool">("neutral");
+  const [bias, setBias] = useState<string>("neutral");
   const [length, setLength] = useState<"1m" | "5m" | "full">("1m");
   const [lang, setLang] = useState<"en" | "es">("en");
 
@@ -640,7 +654,7 @@ export const Dashboard: React.FC = () => {
           matchId: activeMatchId,
           eventId: ev.eventId,
           viewMode: mode,
-          favoriteTeam: mapBiasToFavoriteTeam(bias),
+          favoriteTeam: mapBiasToFavoriteTeam(bias, match),
           language: currentEffectiveLang,
         });
         const finalTitle = res.title || formatted.title;
@@ -786,7 +800,9 @@ export const Dashboard: React.FC = () => {
       autoPlayAudio: boolean,
       unlockedByGesture = false,
       summaryLength?: "1m" | "5m" | "full",
-      langOverride?: "en" | "es"
+      langOverride?: "en" | "es",
+      modeOverride?: "casual" | "analyst" | "child",
+      biasOverride?: string
     ) => {
       const myGenId = ++generationIdRef.current;
 
@@ -806,7 +822,9 @@ export const Dashboard: React.FC = () => {
       const activeMatchId = match?.matchId ?? "PL2027-001";
       const targetLength = summaryLength ?? "full";
       const effectiveLang = langOverride ?? lang;
-      const summaryCacheKey = `${activeMatchId}:${mode}:${bias}:${targetLength}:${effectiveLang}`;
+      const effectiveMode = modeOverride ?? mode;
+      const effectiveBias = biasOverride ?? bias;
+      const summaryCacheKey = `${activeMatchId}:${effectiveMode}:${effectiveBias}:${targetLength}:${effectiveLang}`;
       const cachedSummary = summaryCacheRef.current.get(summaryCacheKey);
 
       try {
@@ -814,8 +832,8 @@ export const Dashboard: React.FC = () => {
           cachedSummary ??
           (await generatePersonalizedSummary({
             matchId: activeMatchId,
-            mode,
-            favoriteTeam: mapBiasToFavoriteTeam(bias),
+            mode: effectiveMode,
+            favoriteTeam: mapBiasToFavoriteTeam(effectiveBias, match),
             language: effectiveLang,
             length: targetLength,
             includeAudio: false,
@@ -876,7 +894,7 @@ export const Dashboard: React.FC = () => {
     [
       bias,
       lang,
-      match?.matchId,
+      match,
       mode,
       playBrowserSpeech,
       playFreshAudioDataUrl,
@@ -987,7 +1005,7 @@ export const Dashboard: React.FC = () => {
             lastViewedMinute: clampedStopped,
             currentMinute: targetCurrentMin,
             viewMode: mode,
-            favoriteTeam: mapBiasToFavoriteTeam(bias),
+            favoriteTeam: mapBiasToFavoriteTeam(bias, match),
             language: lang,
             length,
             includeAudio: false,
@@ -1299,56 +1317,64 @@ export const Dashboard: React.FC = () => {
             <FinalScoreContainer
               match={match}
               timeline={timeline}
+              mode={mode}
+              bias={bias}
               fullTimeSummary={fullTimeSummary}
               isGeneratingSummary={isGeneratingSummary}
               onGenerateSummary={handleGenerateFullTimeSummary}
+              onChangeMode={setMode}
+              onChangeBias={setBias}
               onClose={() => setShowFullTimeBanner(false)}
               onPlayAudio={handlePlaySummaryAudio}
               isPlayingAudio={isPlaying}
             />
           )}
 
-          {/* 4. Hero Console */}
-          <HeroConsole
-            stoppedMinute={stoppedMinute}
-            currentMinute={currentMinute}
-            mode={mode}
-            bias={bias}
-            length={length}
-            lang={lang}
-            isGenerating={isGenerating}
-            generatingWindow={generatingWindow}
-            onChangeStoppedMinute={setStoppedMinute}
-            onChangeMode={setMode}
-            onChangeBias={setBias}
-            onChangeLength={setLength}
-            onChangeLang={setLang}
-            onCatchMeUp={() => {
-              const goalEv =
-                timeline.find(
-                  (e) =>
-                    e.eventType === "Goal" &&
-                    e.minute >= stoppedMinute &&
-                    e.minute <= currentMinute
-                ) ?? timeline.find((e) => e.eventType === "Goal");
-              if (goalEv) {
-                const info = formatTimelineEventTitle(
-                  goalEv,
-                  match?.homeTeam.teamId ?? "ARS",
-                  match?.homeTeam.name ?? "Arsenal",
-                  match?.awayTeam.name ?? "Liverpool"
-                );
-                handleTriggerAnimation({
-                  kind: "goal",
-                  min: goalEv.minute,
-                  club: info.clubName,
-                  player: info.playerLine,
-                  sub: info.title,
-                });
-              }
-              runCatchUp(true, true);
-            }}
-          />
+          {/* 4. Hero Console (Removed when full time is completed) */}
+          {!isFullTime && (
+            <HeroConsole
+              stoppedMinute={stoppedMinute}
+              currentMinute={currentMinute}
+              mode={mode}
+              bias={bias}
+              length={length}
+              lang={lang}
+              homeTeamName={match?.homeTeam.name}
+              awayTeamName={match?.awayTeam.name}
+              isGenerating={isGenerating}
+              generatingWindow={generatingWindow}
+              onChangeStoppedMinute={setStoppedMinute}
+              onChangeMode={setMode}
+              onChangeBias={setBias}
+              onChangeLength={setLength}
+              onChangeLang={setLang}
+              onCatchMeUp={() => {
+                const goalEv =
+                  timeline.find(
+                    (e) =>
+                      e.eventType === "Goal" &&
+                      e.minute >= stoppedMinute &&
+                      e.minute <= currentMinute
+                  ) ?? timeline.find((e) => e.eventType === "Goal");
+                if (goalEv) {
+                  const info = formatTimelineEventTitle(
+                    goalEv,
+                    match?.homeTeam.teamId ?? "ARS",
+                    match?.homeTeam.name ?? "Arsenal",
+                    match?.awayTeam.name ?? "Liverpool"
+                  );
+                  handleTriggerAnimation({
+                    kind: "goal",
+                    min: goalEv.minute,
+                    club: info.clubName,
+                    player: info.playerLine,
+                    sub: info.title,
+                  });
+                }
+                runCatchUp(true, true);
+              }}
+            />
+          )}
 
           {/* 5. LiveCatchUp 4 Intelligence Cards (Shown only after Catch Me Up is clicked, dismissible via X button) */}
           {showCatchUpDeck && (
