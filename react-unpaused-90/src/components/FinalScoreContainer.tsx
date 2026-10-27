@@ -277,9 +277,9 @@ export const FinalScoreContainer: React.FC<FinalScoreContainerProps> = ({
           </p>
         </div>
       ) : fullTimeSummary ? (
-        <div className="bg-white/95 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-emerald-200 shadow-inner space-y-4 w-full">
+        <div className="bg-white/95 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-emerald-200 shadow-inner flex flex-col w-full">
           {/* Summary Metadata Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs font-mono text-slate-500 pb-3 border-b border-emerald-100">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs font-mono text-slate-500 pb-3 border-b border-emerald-100 shrink-0">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-extrabold text-emerald-800 uppercase px-2.5 py-0.5 rounded-md bg-emerald-50 border border-emerald-200">
                 {labels.reportTitle}
@@ -313,8 +313,11 @@ export const FinalScoreContainer: React.FC<FinalScoreContainerProps> = ({
             </div>
           </div>
 
-          {/* Story Paragraphs */}
-          <div className="space-y-4 text-slate-800 font-sans text-sm sm:text-base leading-relaxed whitespace-pre-line">
+          {/* Story Paragraphs with Smooth Internal Scroller */}
+          <div
+            id="final-score-story-scroller"
+            className="mt-4 space-y-4 text-slate-800 font-sans text-sm sm:text-base leading-relaxed whitespace-pre-line max-h-[340px] sm:max-h-[420px] overflow-y-auto pr-3 custom-scrollbar"
+          >
             {fullTimeSummary.story}
           </div>
         </div>
