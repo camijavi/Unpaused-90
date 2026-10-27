@@ -26,6 +26,11 @@ interface CardsProps {
   onClose: () => void;
 }
 
+function formatInsightType(type?: string): string {
+  if (!type) return "Tactical Shift";
+  return type.replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
 export const Cards: React.FC<CardsProps> = ({
   match,
   timeline,
@@ -44,10 +49,10 @@ export const Cards: React.FC<CardsProps> = ({
   const windowEnd = catchUp?.currentMinute ?? currentMinute;
   const windowStr = `${windowStart}' – ${windowEnd}'`;
 
-  const homeCode = match?.homeTeam.teamId ?? "ARS";
-  const awayCode = match?.awayTeam.teamId ?? "LIV";
-  const homeName = match?.homeTeam.name ?? "Arsenal";
-  const awayName = match?.awayTeam.name ?? "Liverpool";
+  const homeCode = match?.homeTeam?.teamId ?? "";
+  const awayCode = match?.awayTeam?.teamId ?? "";
+  const homeName = match?.homeTeam?.name ?? "Home";
+  const awayName = match?.awayTeam?.name ?? "Away";
 
   // Dynamic possession: extract from catchUp narrative if present, or fallback to live match stats
   const posRegexMatch = catchUp?.momentumChanges.match(
@@ -55,10 +60,10 @@ export const Cards: React.FC<CardsProps> = ({
   );
   const possessionHome = posRegexMatch
     ? parseInt(posRegexMatch[1], 10)
-    : (match?.statistics.possession.home ?? 60);
+    : (match?.statistics?.possession?.home ?? 50);
   const possessionAway = posRegexMatch
     ? parseInt(posRegexMatch[2], 10)
-    : (match?.statistics.possession.away ?? 40);
+    : (match?.statistics?.possession?.away ?? 50);
 
   // Real events occurring strictly within the user's missed window
   const windowEvents = timeline.filter(
@@ -103,6 +108,18 @@ export const Cards: React.FC<CardsProps> = ({
 
   const isNumericalDisparity = homeRedsAtReturn !== awayRedsAtReturn;
 
+  const situationDescription = isNumericalDisparity
+    ? `${11 - homeRedsAtReturn}v${11 - awayRedsAtReturn} • ${
+        homeRedsAtReturn > awayRedsAtReturn
+          ? `${awayName} Man Advantage`
+          : `${homeName} Man Advantage`
+      }`
+    : windowEnd >= 75
+    ? "Late-Game High Danger Phase"
+    : windowEnd >= 45
+    ? "2nd Half Tactical Adjustments"
+    : "1st Half Momentum Battle";
+
   return (
     <section aria-label={t.cards.deckTitle} className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -117,6 +134,19 @@ export const Cards: React.FC<CardsProps> = ({
           >
             {statusBadgeText || `${t.cards.deckWindow} ${windowStr}`}
           </span>
+          {catchUp?.wordCount ? (
+            <span
+              id="cards-length-badge"
+              className="hidden sm:inline-flex text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-300"
+            >
+              {catchUp.length === "5m"
+                ? "5m Deep"
+                : catchUp.length === "full"
+                ? "Full Match"
+                : "1m Sprint"}{" "}
+              • {catchUp.wordCount}w • ~{catchUp.estimatedDurationSeconds}s
+            </span>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-3">
@@ -135,11 +165,13 @@ export const Cards: React.FC<CardsProps> = ({
       {/* Responsive Grid: 1 col mobile, 2 cols tablet, 4 cols desktop */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {/* Card 1: What Happened (Chronology + Real Event Tape) */}
-        <article className="editorial-card rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden">
+        <article className="editorial-card rounded-2xl p-4 sm:p-5 flex flex-col h-[390px] sm:h-[410px] relative overflow-hidden shadow-sm">
           <div className="absolute top-0 left-0 w-full h-1.5 bg-teal-500"></div>
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <span className="px-2.5 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200 font-mono text-[11px] font-extrabold">
+
+          {/* Header */}
+          <div className="shrink-0 mb-2">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="px-2.5 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200 font-mono text-[11px] font-extrabold uppercase tracking-wide">
                 {t.cards.card1.tag}
               </span>
               <span
@@ -150,13 +182,17 @@ export const Cards: React.FC<CardsProps> = ({
               </span>
             </div>
             <h3
-              className="text-xl font-display font-black uppercase tracking-wide text-slate-900 mb-2"
+              className="text-lg sm:text-xl font-display font-black uppercase tracking-wide text-slate-900 line-clamp-1"
               id="card1-title"
             >
               {t.cards.card1.title}
             </h3>
+          </div>
+
+          {/* Body: Scrollable with custom scrollbar, takes all remaining space */}
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1.5 custom-scrollbar">
             <p
-              className={`text-xs sm:text-sm text-slate-600 leading-relaxed ${
+              className={`text-xs sm:text-sm text-slate-600 leading-relaxed whitespace-pre-line ${
                 isGenerating ? "animate-pulse" : ""
               }`}
               id="card1-body"
@@ -165,8 +201,8 @@ export const Cards: React.FC<CardsProps> = ({
             </p>
           </div>
 
-          {/* Visual Event Tape Footer strictly from Real Window Events */}
-          <div className="mt-4 pt-3 border-t border-slate-200 space-y-1.5">
+          {/* Visual Event Tape Footer strictly from Real Window Events (Always pinned at bottom) */}
+          <div className="mt-3 pt-3 border-t border-slate-200 space-y-1.5 shrink-0">
             {displayWindowEvents.length > 0 ? (
               <div className="flex items-center justify-between gap-1 text-[11px] font-mono flex-wrap">
                 {displayWindowEvents.map((ev) => {
@@ -205,7 +241,7 @@ export const Cards: React.FC<CardsProps> = ({
                 Clean, continuous open play in this window
               </div>
             )}
-            <div className="flex items-center justify-between text-[11px] text-slate-500">
+            <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono">
               <span>{t.cards.deckWindow}</span>
               <span
                 className="font-mono text-teal-700 font-bold"
@@ -218,12 +254,14 @@ export const Cards: React.FC<CardsProps> = ({
           </div>
         </article>
 
-        {/* Card 2: Key Tactical Decisions (Clean Tactical Context Strip without unnecessary pitch graphic) */}
-        <article className="editorial-card rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden">
+        {/* Card 2: Key Tactical Decisions */}
+        <article className="editorial-card rounded-2xl p-4 sm:p-5 flex flex-col h-[390px] sm:h-[410px] relative overflow-hidden shadow-sm">
           <div className="absolute top-0 left-0 w-full h-1.5 bg-sky-500"></div>
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <span className="px-2.5 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 font-mono text-[11px] font-extrabold">
+
+          {/* Header */}
+          <div className="shrink-0 mb-2">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="px-2.5 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 font-mono text-[11px] font-extrabold uppercase tracking-wide">
                 {t.cards.card2.tag}
               </span>
               <span className="text-xs font-mono font-bold text-sky-700">
@@ -232,13 +270,17 @@ export const Cards: React.FC<CardsProps> = ({
               </span>
             </div>
             <h3
-              className="text-xl font-display font-black uppercase tracking-wide text-slate-900 mb-2"
+              className="text-lg sm:text-xl font-display font-black uppercase tracking-wide text-slate-900 line-clamp-1"
               id="card2-title"
             >
               {t.cards.card2.title}
             </h3>
+          </div>
+
+          {/* Body: Scrollable with custom scrollbar, takes all remaining space */}
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1.5 custom-scrollbar">
             <p
-              className={`text-xs sm:text-sm text-slate-600 leading-relaxed ${
+              className={`text-xs sm:text-sm text-slate-600 leading-relaxed whitespace-pre-line ${
                 isGenerating ? "animate-pulse" : ""
               }`}
               id="card2-body"
@@ -250,36 +292,38 @@ export const Cards: React.FC<CardsProps> = ({
             </p>
           </div>
 
-          {/* Clean Tactical Breakdown Strip with Real Match Data */}
-          <div className="mt-4 pt-3 border-t border-slate-200">
-            <div className="bg-sky-50/80 rounded-xl p-2.5 border border-sky-200 flex items-center justify-between gap-2.5">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="px-2 py-0.5 rounded bg-sky-600 text-white font-mono text-[10px] font-extrabold uppercase shrink-0">
-                  {windowInsight?.type ?? "Tactical Shift"}
+          {/* Clean Tactical Breakdown Strip with 2-Row Visible Hierarchy (Always pinned at bottom) */}
+          <div className="mt-3 pt-3 border-t border-slate-200 shrink-0">
+            <div className="bg-sky-50/90 rounded-xl p-2.5 border border-sky-200 flex flex-col gap-1.5 shadow-2xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="px-2 py-0.5 rounded bg-sky-600 text-white font-mono text-[10px] font-extrabold uppercase tracking-wide shrink-0">
+                  {formatInsightType(windowInsight?.type)}
                 </span>
-                <span
-                  className="text-xs font-semibold text-slate-800 truncate"
-                  title={windowInsight?.summary}
-                >
-                  {windowInsight?.summary ??
-                    `${match?.homeTeam.coach ?? "Arteta"} vs. ${
-                      match?.awayTeam.coach ?? "Slot"
-                    } Tactical Battle`}
+                <span className="text-[10px] font-mono font-bold text-sky-800 truncate">
+                  {match?.homeTeam.coach?.split(" ").pop() ?? "Arteta"} vs {match?.awayTeam.coach?.split(" ").pop() ?? "Slot"} Duel
                 </span>
               </div>
-              <span className="text-[10px] font-mono font-bold text-sky-700 shrink-0">
-                {match?.homeTeam.coach?.split(" ").pop() ?? "Arteta"} Duel
-              </span>
+              <p
+                className="text-xs font-semibold text-slate-800 leading-snug line-clamp-2"
+                title={windowInsight?.summary ?? ""}
+              >
+                {windowInsight?.summary ??
+                  `${match?.homeTeam.coach ?? "Arteta"} vs. ${
+                    match?.awayTeam.coach ?? "Slot"
+                  } tactical battle.`}
+              </p>
             </div>
           </div>
         </article>
 
-        {/* Card 3: Momentum Changes (Dynamic Two-Tone Split Bar + Live Match Statistics) */}
-        <article className="editorial-card rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden">
+        {/* Card 3: Momentum Changes */}
+        <article className="editorial-card rounded-2xl p-4 sm:p-5 flex flex-col h-[390px] sm:h-[410px] relative overflow-hidden shadow-sm">
           <div className="absolute top-0 left-0 w-full h-1.5 bg-rose-500"></div>
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <span className="px-2.5 py-0.5 rounded bg-rose-50 text-rose-800 border border-rose-200 font-mono text-[11px] font-extrabold">
+
+          {/* Header */}
+          <div className="shrink-0 mb-2">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="px-2.5 py-0.5 rounded bg-rose-50 text-rose-800 border border-rose-200 font-mono text-[11px] font-extrabold uppercase tracking-wide">
                 {t.cards.card3.tag}
               </span>
               <span
@@ -290,13 +334,17 @@ export const Cards: React.FC<CardsProps> = ({
               </span>
             </div>
             <h3
-              className="text-xl font-display font-black uppercase tracking-wide text-slate-900 mb-2"
+              className="text-lg sm:text-xl font-display font-black uppercase tracking-wide text-slate-900 line-clamp-1"
               id="card3-title"
             >
               {t.cards.card3.title}
             </h3>
+          </div>
+
+          {/* Body: Scrollable with custom scrollbar, takes all remaining space */}
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1.5 custom-scrollbar">
             <p
-              className={`text-xs sm:text-sm text-slate-600 leading-relaxed ${
+              className={`text-xs sm:text-sm text-slate-600 leading-relaxed whitespace-pre-line ${
                 isGenerating ? "animate-pulse" : ""
               }`}
               id="card3-body"
@@ -305,24 +353,24 @@ export const Cards: React.FC<CardsProps> = ({
             </p>
           </div>
 
-          {/* Dynamic Momentum Split Bar + Real Match Statistics */}
-          <div className="mt-4 pt-3 border-t border-slate-200 space-y-2">
+          {/* Dynamic Momentum Split Bar + Real Match Statistics (Always pinned at bottom) */}
+          <div className="mt-3 pt-3 border-t border-slate-200 space-y-2 shrink-0">
             {/* Dynamic Two-Tone Possession Split Bar */}
             <div className="space-y-1">
               <div className="flex justify-between text-[11px] font-mono font-bold text-slate-700">
-                <span className="text-red-700">
+                <span className="text-rose-700 font-extrabold">
                   {homeCode} {possessionHome}%
                 </span>
-                <span className="text-slate-500 font-medium text-[10px] uppercase">
+                <span className="text-slate-500 font-medium text-[10px] uppercase tracking-wider">
                   Ball Control
                 </span>
-                <span className="text-teal-700">
+                <span className="text-teal-700 font-extrabold">
                   {possessionAway}% {awayCode}
                 </span>
               </div>
-              <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden flex">
+              <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden flex shadow-inner">
                 <div
-                  className="bg-red-500 transition-all duration-500"
+                  className="bg-rose-500 transition-all duration-500"
                   style={{ width: `${possessionHome}%` }}
                 />
                 <div
@@ -332,34 +380,36 @@ export const Cards: React.FC<CardsProps> = ({
               </div>
             </div>
 
-            {/* Real Live Match Statistics at Elapsed Minute */}
-            <div className="flex items-center justify-between text-[10px] font-mono text-slate-600 bg-slate-50 px-2 py-1.5 rounded-lg border border-slate-200">
-              <span>
-                {t.cards.card3.shots}{" "}
-                <strong className="text-slate-900">
-                  {match?.statistics.shots.home ?? 16} (
-                  {match?.statistics.shotsOnTarget.home ?? 9}) –{" "}
-                  {match?.statistics.shots.away ?? 10} (
-                  {match?.statistics.shotsOnTarget.away ?? 5})
-                </strong>
-              </span>
-              <span>
-                {t.cards.card3.passAcc}{" "}
-                <strong className="text-slate-900">
-                  {match?.statistics.passAccuracy.home ?? 90}% –{" "}
-                  {match?.statistics.passAccuracy.away ?? 83}%
-                </strong>
-              </span>
+            {/* Real Live Match Statistics in Balanced 2-Column Grid */}
+            <div className="grid grid-cols-2 gap-2 text-[10.5px] font-mono bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
+              <div className="flex flex-col min-w-0">
+                <span className="text-slate-500 text-[9px] uppercase font-bold tracking-wider">
+                  {t.cards.card3.shots}
+                </span>
+                <span className="text-slate-900 font-black truncate">
+                  {match?.statistics.shots.home ?? 16} ({match?.statistics.shotsOnTarget.home ?? 9}) – {match?.statistics.shots.away ?? 10} ({match?.statistics.shotsOnTarget.away ?? 5})
+                </span>
+              </div>
+              <div className="flex flex-col text-right min-w-0">
+                <span className="text-slate-500 text-[9px] uppercase font-bold tracking-wider">
+                  {t.cards.card3.passAcc}
+                </span>
+                <span className="text-slate-900 font-black truncate">
+                  {match?.statistics.passAccuracy.home ?? 90}% – {match?.statistics.passAccuracy.away ?? 83}%
+                </span>
+              </div>
             </div>
           </div>
         </article>
 
-        {/* Card 4: Current Game State (Dynamic Match State & Disparity Alert) */}
-        <article className="editorial-card rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden">
+        {/* Card 4: Current Game State */}
+        <article className="editorial-card rounded-2xl p-4 sm:p-5 flex flex-col h-[390px] sm:h-[410px] relative overflow-hidden shadow-sm">
           <div className="absolute top-0 left-0 w-full h-1.5 bg-amber-500"></div>
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <span className="px-2.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 font-mono text-[11px] font-extrabold">
+
+          {/* Header */}
+          <div className="shrink-0 mb-2">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="px-2.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 font-mono text-[11px] font-extrabold uppercase tracking-wide">
                 {t.cards.card4.tag}
               </span>
               <span className="text-xs font-mono text-amber-700 font-bold">
@@ -367,13 +417,17 @@ export const Cards: React.FC<CardsProps> = ({
               </span>
             </div>
             <h3
-              className="text-xl font-display font-black uppercase tracking-wide text-slate-900 mb-2"
+              className="text-lg sm:text-xl font-display font-black uppercase tracking-wide text-slate-900 line-clamp-1"
               id="card4-title"
             >
               {t.cards.card4.title}
             </h3>
+          </div>
+
+          {/* Body: Scrollable with custom scrollbar, takes all remaining space */}
+          <div className="flex-1 min-h-0 overflow-y-auto pr-1.5 custom-scrollbar">
             <p
-              className={`text-xs sm:text-sm text-slate-600 leading-relaxed ${
+              className={`text-xs sm:text-sm text-slate-600 leading-relaxed whitespace-pre-line ${
                 isGenerating ? "animate-pulse" : ""
               }`}
               id="card4-body"
@@ -382,30 +436,23 @@ export const Cards: React.FC<CardsProps> = ({
             </p>
           </div>
 
-          {/* Real Dynamic Situation Banner at Return Minute */}
-          <div className="mt-4 pt-3 border-t border-slate-200">
-            <div className="bg-amber-50/80 rounded-xl p-2.5 border border-amber-300 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="font-mono text-xs font-black px-2 py-0.5 rounded bg-amber-500 text-slate-950 shrink-0">
+          {/* Real Dynamic Situation Banner at Return Minute (Always pinned at bottom with 2-Row Layout) */}
+          <div className="mt-3 pt-3 border-t border-slate-200 shrink-0">
+            <div className="bg-amber-50/90 rounded-xl p-2.5 border border-amber-300 flex flex-col gap-1.5 shadow-2xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-xs font-black px-2 py-0.5 rounded bg-amber-500 text-slate-950 shrink-0 shadow-2xs">
                   {homeCode} {homeGoalsAtReturn} – {awayGoalsAtReturn} {awayCode}
                 </span>
-                <span className="text-xs font-bold text-slate-900 truncate">
-                  {isNumericalDisparity
-                    ? `${11 - homeRedsAtReturn}v${11 - awayRedsAtReturn} ${
-                        homeRedsAtReturn > awayRedsAtReturn
-                          ? `${awayCode} Man Advantage`
-                          : `${homeCode} Man Advantage`
-                      }`
-                    : windowEnd >= 75
-                    ? "Late-Game High Danger Phase"
-                    : windowEnd >= 45
-                    ? "2nd Half Tactical Adjustments"
-                    : "1st Half Momentum Battle"}
+                <span className="text-[10px] font-mono font-extrabold px-2 py-0.5 rounded bg-amber-200 text-amber-900 border border-amber-300/80 shrink-0 uppercase">
+                  {windowEnd >= 90 ? "Full Time" : `${windowEnd}' Live`}
                 </span>
               </div>
-              <span className="text-[10px] font-mono font-extrabold px-2 py-0.5 rounded bg-amber-200 text-amber-900 shrink-0 uppercase">
-                {windowEnd >= 90 ? "Full Time" : `${windowEnd}' Live`}
-              </span>
+              <p
+                className="text-xs font-bold text-slate-900 leading-snug line-clamp-2"
+                title={situationDescription}
+              >
+                {situationDescription}
+              </p>
             </div>
           </div>
         </article>

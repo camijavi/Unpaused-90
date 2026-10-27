@@ -117,7 +117,7 @@ public record PersonalizedSummaryRequest(
     string MatchId,
     string Mode = "casual",
     string? FavoriteTeam = null,
-    string Length = "1m",
+    string Length = "full",
     string? Language = "en",
     bool IncludeAudio = false
 );
@@ -127,7 +127,7 @@ public record PersonalizedSummaryResponse(
     string Mode,
     string? FavoriteTeam,
     string Story,
-    string Length = "1m",
+    string Length = "full",
     int WordCount = 0,
     int EstimatedDurationSeconds = 0,
     string? Voice = null,

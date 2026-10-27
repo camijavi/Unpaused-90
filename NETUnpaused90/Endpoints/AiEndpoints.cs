@@ -16,10 +16,27 @@ public static class AiEndpoints
             AiService aiService,
             CancellationToken ct) =>
         {
-            var result = await aiService.GenerateCatchUpAsync(request, ct);
-            return result is not null
-                ? Results.Ok(result)
-                : Results.NotFound(new { error = $"Match '{request.MatchId}' not found." });
+            try
+            {
+                var result = await aiService.GenerateCatchUpAsync(request, ct);
+                return result is not null
+                    ? Results.Ok(result)
+                    : Results.NotFound(new { error = $"Match '{request.MatchId}' not found." });
+            }
+            catch (System.ClientModel.ClientResultException cre)
+            {
+                return Results.Json(new
+                {
+                    error = "Azure OpenAI Service Error",
+                    status = cre.Status,
+                    message = cre.Message,
+                    tip = "Add your Azure OpenAI API Key to appsettings.json ('AzureOpenAI:ApiKey') or configure the Entra ID role 'Cognitive Services OpenAI User'."
+                }, statusCode: cre.Status > 0 ? cre.Status : 502);
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { error = "AI generation failed", message = ex.Message }, statusCode: 500);
+            }
         })
         .WithName("GenerateCatchUp");
 
@@ -29,10 +46,27 @@ public static class AiEndpoints
             AiService aiService,
             CancellationToken ct) =>
         {
-            var result = await aiService.GeneratePersonalizedSummaryAsync(request, ct);
-            return result is not null
-                ? Results.Ok(result)
-                : Results.NotFound(new { error = $"Match '{request.MatchId}' not found." });
+            try
+            {
+                var result = await aiService.GeneratePersonalizedSummaryAsync(request, ct);
+                return result is not null
+                    ? Results.Ok(result)
+                    : Results.NotFound(new { error = $"Match '{request.MatchId}' not found." });
+            }
+            catch (System.ClientModel.ClientResultException cre)
+            {
+                return Results.Json(new
+                {
+                    error = "Azure OpenAI Service Error",
+                    status = cre.Status,
+                    message = cre.Message,
+                    tip = "Add your Azure OpenAI API Key to appsettings.json ('AzureOpenAI:ApiKey') or configure the Entra ID role 'Cognitive Services OpenAI User'."
+                }, statusCode: cre.Status > 0 ? cre.Status : 502);
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { error = "AI generation failed", message = ex.Message }, statusCode: 500);
+            }
         })
         .WithName("GeneratePersonalizedSummary");
 
@@ -42,10 +76,27 @@ public static class AiEndpoints
             AiService aiService,
             CancellationToken ct) =>
         {
-            var result = await aiService.ExplainEventAsync(request, ct);
-            return result is not null
-                ? Results.Ok(result)
-                : Results.NotFound(new { error = $"Match '{request.MatchId}' or Event '{request.EventId}' not found." });
+            try
+            {
+                var result = await aiService.ExplainEventAsync(request, ct);
+                return result is not null
+                    ? Results.Ok(result)
+                    : Results.NotFound(new { error = $"Match '{request.MatchId}' or Event '{request.EventId}' not found." });
+            }
+            catch (System.ClientModel.ClientResultException cre)
+            {
+                return Results.Json(new
+                {
+                    error = "Azure OpenAI Service Error",
+                    status = cre.Status,
+                    message = cre.Message,
+                    tip = "Add your Azure OpenAI API Key to appsettings.json ('AzureOpenAI:ApiKey') or configure the Entra ID role 'Cognitive Services OpenAI User'."
+                }, statusCode: cre.Status > 0 ? cre.Status : 502);
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { error = "AI generation failed", message = ex.Message }, statusCode: 500);
+            }
         })
         .WithName("ExplainEvent");
 
@@ -82,11 +133,11 @@ public static class AiEndpoints
         <option value="kid">Young Child (6-10)</option>
       </select>
     </label>
-    <label>Favorite Team:
+    <label>Favorite Team / Bias:
       <select id="team">
-        <option value="Liverpool">Liverpool</option>
-        <option value="Arsenal">Arsenal</option>
-        <option value="Neutral">Neutral</option>
+        <option value="Neutral">Neutral (50/50)</option>
+        <option value="home">Home Team</option>
+        <option value="away">Away Team</option>
       </select>
     </label>
     <label>Summary Length:
@@ -105,12 +156,12 @@ public static class AiEndpoints
     <br/>
     <button id="btnCatchUp" onclick="testCatchUp()">⚽ Catch Me Up</button>
     <button id="btnSummary" onclick="testSummary()">⚽ Match Summary</button>
-    <button id="btnExplain" onclick="testExplain()">⚽ Explain Salah 54' Goal</button>
+    <button id="btnExplain" onclick="testExplain()">⚽ Explain Key Event</button>
   </div>
 
   <div class="card">
     <h3>2. 🎧 Audio Recap Player</h3>
-    <textarea id="ttsText">Welcome back to Unpaused 90! While you were at the gym, Arsenal broke the deadlock in the 31st minute through Bukayo Saka, before Mohamed Salah equalized for Liverpool in the 54th minute!</textarea>
+    <textarea id="ttsText">Welcome back to Unpaused 90! Here is your AI personalized match recap and key moments summary.</textarea>
     <br/>
     <button id="btnAudio" class="audio-btn" onclick="testAudio()">🎧 Play Audio</button>
     <div style="margin-top: 0.85rem;">
@@ -282,6 +333,24 @@ public static class AiEndpoints
         }
       }
     }
+
+    async function loadMatchTeams() {
+      try {
+        const res = await fetch('/api/v1/matches/current');
+        if (res.ok) {
+          const match = await res.json();
+          if (match && match.homeTeam && match.awayTeam) {
+            const teamSel = document.getElementById('team');
+            teamSel.innerHTML = `
+              <option value="Neutral">Neutral (50/50)</option>
+              <option value="${match.homeTeam.name}">${match.homeTeam.name} (Home Fan)</option>
+              <option value="${match.awayTeam.name}">${match.awayTeam.name} (Away Fan)</option>
+            `;
+          }
+        }
+      } catch (e) {}
+    }
+    loadMatchTeams();
   </script>
 </body>
 </html>

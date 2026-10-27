@@ -15,10 +15,10 @@ export const LiveGrounds: React.FC<LiveGroundsProps> = ({
   onResetSimulation,
 }) => {
   const { t } = useLanguage();
-  const homeName = match?.homeTeam.name ?? "Arsenal";
-  const awayName = match?.awayTeam.name ?? "Liverpool";
-  const homeScore = match?.homeTeam.score ?? 0;
-  const awayScore = match?.awayTeam.score ?? 0;
+  const homeName = match?.homeTeam?.name ?? "";
+  const awayName = match?.awayTeam?.name ?? "";
+  const homeScore = match?.homeTeam?.score ?? 0;
+  const awayScore = match?.awayTeam?.score ?? 0;
   const minute = match?.currentMinute ?? 1;
   const isFullTime = minute >= 90 || match?.status === "FullTime";
 
@@ -29,17 +29,19 @@ export const LiveGrounds: React.FC<LiveGroundsProps> = ({
           {t.liveGrounds.liveGrounds}
         </span>
 
-        <button
-          id="match-btn-ars-liv"
-          type="button"
-          className="px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-2 bg-red-50 border-red-500 text-red-700 shadow-sm"
-        >
-          <BallIcon className="w-4 h-4 text-red-600 shrink-0" />
-          <span>
-            {homeName} {homeScore} – {awayScore} {awayName} (
-            {isFullTime ? t.liveGrounds.fullTimeShort : `${minute}'`})
-          </span>
-        </button>
+        {homeName && awayName && (
+          <button
+            id="match-btn-live"
+            type="button"
+            className="px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-2 bg-red-50 border-red-500 text-red-700 shadow-sm"
+          >
+            <BallIcon className="w-4 h-4 text-red-600 shrink-0" />
+            <span>
+              {homeName} {homeScore} – {awayScore} {awayName} (
+              {isFullTime ? t.liveGrounds.fullTimeShort : `${minute}'`})
+            </span>
+          </button>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2.5 px-2 sm:px-0">
@@ -48,14 +50,15 @@ export const LiveGrounds: React.FC<LiveGroundsProps> = ({
             {t.liveGrounds.randomStart}{" "}
             <strong className="text-pl-purple">{initialStartMinute}&apos;</strong>{" "}
             • {t.liveGrounds.clock}{" "}
-            <strong className="text-slate-700">{t.liveGrounds.speed}</strong>
+            <strong className="text-pl-purple">30s = 1m</strong>
           </span>
         )}
+
         {onResetSimulation && (
           <button
             type="button"
             onClick={onResetSimulation}
-            className="px-3 py-1.5 rounded-lg text-xs font-mono font-bold uppercase tracking-wider bg-pl-purple text-white hover:brightness-110 transition-all shadow-sm cursor-pointer"
+            className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-pl-purple bg-purple-50 hover:bg-purple-100 border border-purple-200 transition-colors"
           >
             {t.liveGrounds.simulateRandom}
           </button>

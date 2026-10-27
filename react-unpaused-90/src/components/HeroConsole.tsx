@@ -13,14 +13,16 @@ interface HeroConsoleProps {
   stoppedMinute: number;
   currentMinute: number;
   mode: "casual" | "analyst" | "child";
-  bias: "neutral" | "arsenal" | "liverpool";
+  bias: string;
   length: "1m" | "5m" | "full";
   lang: "en" | "es";
+  homeTeamName?: string;
+  awayTeamName?: string;
   isGenerating: boolean;
   generatingWindow?: { stopped: number; current: number } | null;
   onChangeStoppedMinute: (min: number) => void;
   onChangeMode: (mode: "casual" | "analyst" | "child") => void;
-  onChangeBias: (bias: "neutral" | "arsenal" | "liverpool") => void;
+  onChangeBias: (bias: string) => void;
   onChangeLength: (length: "1m" | "5m" | "full") => void;
   onChangeLang: (lang: "en" | "es") => void;
   onCatchMeUp: () => void;
@@ -33,6 +35,8 @@ export const HeroConsole: React.FC<HeroConsoleProps> = ({
   bias,
   length,
   lang,
+  homeTeamName,
+  awayTeamName,
   isGenerating,
   generatingWindow,
   onChangeStoppedMinute,
@@ -94,15 +98,20 @@ export const HeroConsole: React.FC<HeroConsoleProps> = ({
     },
   ];
 
+  const homeLabel = homeTeamName ? `${homeTeamName} Fan` : t.heroConsole.controls.bias.arsenal;
+  const awayLabel = awayTeamName ? `${awayTeamName} Fan` : t.heroConsole.controls.bias.liverpool;
+
   const modeNames: Record<typeof mode, string> = {
     casual: t.heroConsole.controls.persona.casual.label,
     analyst: t.heroConsole.controls.persona.analyst.label,
     child: t.heroConsole.controls.persona.child.label,
   };
-  const biasNames: Record<typeof bias, string> = {
+  const biasNames: Record<string, string> = {
     neutral: t.heroConsole.controls.bias.neutral,
-    arsenal: t.heroConsole.controls.bias.arsenal,
-    liverpool: t.heroConsole.controls.bias.liverpool,
+    home: homeLabel,
+    away: awayLabel,
+    arsenal: homeLabel,
+    liverpool: awayLabel,
   };
   const lenNames: Record<typeof length, string> = {
     "1m": t.heroConsole.controls.recapDepth.options.sprint.shortLabel,
@@ -298,16 +307,23 @@ export const HeroConsole: React.FC<HeroConsoleProps> = ({
                   label: t.heroConsole.controls.bias.neutral,
                 },
                 {
-                  id: "arsenal",
-                  label: t.heroConsole.controls.bias.arsenal,
+                  id: "home",
+                  label: homeLabel,
                 },
                 {
-                  id: "liverpool",
-                  label: t.heroConsole.controls.bias.liverpool,
+                  id: "away",
+                  label: awayLabel,
                 },
               ] as const
             ).map((item) => {
-              const isSelected = bias === item.id;
+              const isSelected =
+                bias === item.id ||
+                (item.id === "home" &&
+                  (bias === "arsenal" ||
+                    (homeTeamName && bias.toLowerCase() === homeTeamName.toLowerCase()))) ||
+                (item.id === "away" &&
+                  (bias === "liverpool" ||
+                    (awayTeamName && bias.toLowerCase() === awayTeamName.toLowerCase())));
               return (
                 <button
                   key={item.id}

@@ -58,59 +58,84 @@ async function fetchWithFallback(
     : new Error(`Network request failed for ${path}`);
 }
 
+export async function fetchMatches(): Promise<
+  {
+    matchId: string;
+    competition: string;
+    stadium: string;
+    homeTeam: string;
+    awayTeam: string;
+    homeScore: number;
+    awayScore: number;
+    score: string;
+    currentMinute: number;
+    status: string;
+  }[]
+> {
+  const res = await fetchWithFallback(`/api/v1/matches`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch matches: ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function fetchMatchById(
-  matchId = "PL2027-001",
+  matchId?: string,
   minute?: number
 ): Promise<MatchData> {
   const query = minute !== undefined ? `?minute=${minute}` : "";
-  const res = await fetchWithFallback(`/api/v1/matches/${matchId}${query}`);
+  const targetId = matchId || "PL2027-001";
+  const res = await fetchWithFallback(`/api/v1/matches/${targetId}${query}`);
   if (!res.ok) {
-    throw new Error(`Failed to fetch match ${matchId}: ${res.status}`);
+    throw new Error(`Failed to fetch match ${targetId}: ${res.status}`);
   }
   return res.json();
 }
 
 export async function resetMatchSimulation(
-  matchId = "PL2027-001",
+  matchId?: string,
   startMinute?: number
 ): Promise<MatchData> {
   const query = startMinute !== undefined ? `?startMinute=${startMinute}` : "";
+  const targetId = matchId || "PL2027-001";
   const res = await fetchWithFallback(
-    `/api/v1/matches/${matchId}/simulation/reset${query}`,
+    `/api/v1/matches/${targetId}/simulation/reset${query}`,
     {
       method: "POST",
     }
   );
   if (!res.ok) {
-    throw new Error(`Failed to reset match simulation ${matchId}: ${res.status}`);
+    throw new Error(`Failed to reset match simulation ${targetId}: ${res.status}`);
   }
   return res.json();
 }
 
 export async function fetchMatchTimeline(
-  matchId = "PL2027-001",
+  matchId?: string,
   upToMinute?: number
 ): Promise<TimelineEvent[]> {
   const query = upToMinute !== undefined ? `?upToMinute=${upToMinute}` : "";
+  const targetId = matchId || "PL2027-001";
   const res = await fetchWithFallback(
-    `/api/v1/matches/${matchId}/timeline${query}`
+    `/api/v1/matches/${targetId}/timeline${query}`
   );
   if (!res.ok) {
-    throw new Error(`Failed to fetch timeline for ${matchId}: ${res.status}`);
+    throw new Error(`Failed to fetch timeline for ${targetId}: ${res.status}`);
   }
   return res.json();
 }
 
 export async function fetchMatchInsights(
-  matchId = "PL2027-001",
+  matchId?: string,
   upToMinute?: number
 ): Promise<GeneratedInsight[]> {
   const query = upToMinute !== undefined ? `?upToMinute=${upToMinute}` : "";
+  const targetId = matchId || "PL2027-001";
   const res = await fetchWithFallback(
-    `/api/v1/matches/${matchId}/insights${query}`
+    `/api/v1/matches/${targetId}/insights${query}`
   );
   if (!res.ok) {
-    throw new Error(`Failed to fetch insights for ${matchId}: ${res.status}`);
+    throw new Error(`Failed to fetch insights for ${targetId}: ${res.status}`);
   }
   return res.json();
 }
@@ -176,7 +201,7 @@ export async function synthesizeAudio(
 }
 
 export async function fetchMatchPossession(
-  matchId = "PL2027-001",
+  matchId?: string,
   minute?: number
 ): Promise<{
   matchId: string;
@@ -188,11 +213,12 @@ export async function fetchMatchPossession(
   status: string;
 }> {
   const query = minute !== undefined ? `?minute=${minute}` : "";
+  const targetId = matchId || "PL2027-001";
   const res = await fetchWithFallback(
-    `/api/v1/matches/${matchId}/possession${query}`
+    `/api/v1/matches/${targetId}/possession${query}`
   );
   if (!res.ok) {
-    throw new Error(`Failed to fetch possession for ${matchId}: ${res.status}`);
+    throw new Error(`Failed to fetch possession for ${targetId}: ${res.status}`);
   }
   return res.json();
 }
@@ -204,32 +230,25 @@ export async function fetchMatchPossession(
 export function managePossessionUpdates(
   minute: number,
   activeEvents: TimelineEvent[] = [],
-  baselineHome = 54
+  baselineHome = 50,
+  homeTeamIdentifier = "home",
+  awayTeamIdentifier = "away"
 ): { home: number; away: number } {
   let homePos = baselineHome;
-
-  // Progression baseline
-  if (minute < 15) {
-    homePos = 58.0 + (minute / 15.0) * 4.0;
-  } else if (minute < 35) {
-    homePos = 62.0 - ((minute - 15.0) / 20.0) * 12.0;
-  } else if (minute < 55) {
-    homePos = 50.0 + ((minute - 35.0) / 20.0) * 5.0;
-  } else {
-    homePos = 55.0 + ((minute - 55.0) / 35.0) * 5.0;
-  }
 
   // Red card man-advantage adjustments
   const homeReds = activeEvents.filter(
     (e) =>
       e.eventType.toLowerCase() === "redcard" &&
-      (e.team === "ARS" || e.team.toLowerCase().includes("arsenal"))
+      (e.team.toLowerCase() === homeTeamIdentifier.toLowerCase() ||
+        homeTeamIdentifier.toLowerCase().includes(e.team.toLowerCase()))
   ).length;
 
   const awayReds = activeEvents.filter(
     (e) =>
       e.eventType.toLowerCase() === "redcard" &&
-      (e.team === "LIV" || e.team.toLowerCase().includes("liverpool"))
+      (e.team.toLowerCase() === awayTeamIdentifier.toLowerCase() ||
+        awayTeamIdentifier.toLowerCase().includes(e.team.toLowerCase()))
   ).length;
 
   const netAdvantage = awayReds - homeReds;
@@ -245,12 +264,13 @@ export function managePossessionUpdates(
 
   for (const seq of recentPressure) {
     const isHome =
-      seq.team === "ARS" || seq.team.toLowerCase().includes("arsenal");
+      seq.team.toLowerCase() === homeTeamIdentifier.toLowerCase() ||
+      homeTeamIdentifier.toLowerCase().includes(seq.team.toLowerCase());
     const dur = Math.min(2.0, Math.max(0.5, (seq.durationSeconds ?? 60) / 60));
     eventDelta += (isHome ? 1.5 : -1.5) * dur;
   }
 
-  const finalHome = Math.min(75, Math.max(25, Math.round(homePos + eventDelta)));
+  const finalHome = Math.min(80, Math.max(20, Math.round(homePos + eventDelta)));
   return {
     home: finalHome,
     away: 100 - finalHome,
